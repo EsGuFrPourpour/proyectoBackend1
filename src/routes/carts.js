@@ -1,5 +1,6 @@
 const express = require('express');
 const CartManager = require('../managers/CartManager');
+const { io } = require('../main');
 
 const router = express.Router();
 const cartManager = new CartManager();
@@ -27,6 +28,10 @@ router.post('/:cid/product/:pid', async (req, res) => {
   try {
     const cart = await cartManager.addProductToCart(req.params.cid, req.params.pid);
     if (!cart) return res.status(404).json({ error: 'Carrito no encontrado' });
+
+    // Emitir evento Socket.IO
+    io.emit('product_added_to_cart', { cartId: req.params.cid, productId: req.params.pid });
+
     res.json(cart);
   } catch (error) {
     res.status(500).json({ error: 'Error al agregar el producto al carrito' });

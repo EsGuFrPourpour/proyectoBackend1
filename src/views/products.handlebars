@@ -1,7 +1,8 @@
 <h2>Lista de Productos</h2>
-<ul>
+<div id="notifications"></div>
+<ul id="products-list">
   {{#each products}}
-    <li>
+    <li data-id="{{this.id}}">
       <h3>{{this.title}}</h3>
       <p>{{this.description}}</p>
       <p>Precio: ${{this.price}}</p>

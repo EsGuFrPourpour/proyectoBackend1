@@ -1,6 +1,7 @@
 const express = require('express');
 const exphbs = require('express-handlebars');
 const path = require('path');
+const { Server } = require('socket.io');
 const productRouter = require('./routes/products');
 const cartRouter = require('./routes/carts');
 const viewsRouter = require('./routes/views');
@@ -23,7 +24,19 @@ app.use('/api/products', productRouter);
 app.use('/api/carts', cartRouter);
 app.use('/', viewsRouter);
 
-// Iniciar servidor
-app.listen(PORT, () => {
+// Crear servidor HTTP
+const server = app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });
+
+// Configurar Socket.IO
+const io = new Server(server);
+
+io.on('connection', (socket) => {
+  console.log('Cliente Socket.IO conectado:', socket.id);
+  socket.on('disconnect', () => {
+    console.log('Cliente Socket.IO desconectado:', socket.id);
+  });
+});
+
+module.exports = { app, io }; // Exportar io para usarlo en otros módulos

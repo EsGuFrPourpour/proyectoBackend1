@@ -1,0 +1,65 @@
+<h2>Productos en Tiempo Real</h2>
+
+<div id="notifications" class="notifications"></div>
+
+<!-- Formulario para agregar productos -->
+<div class="product-form">
+  <h3>Agregar Nuevo Producto</h3>
+  <form id="productForm">
+    <div class="form-group">
+      <label for="title">Título:</label>
+      <input type="text" id="title" name="title" required>
+    </div>
+    
+    <div class="form-group">
+      <label for="description">Descripción:</label>
+      <textarea id="description" name="description" required></textarea>
+    </div>
+    
+    <div class="form-group">
+      <label for="code">Código:</label>
+      <input type="text" id="code" name="code" required>
+    </div>
+    
+    <div class="form-group">
+      <label for="price">Precio:</label>
+      <input type="number" id="price" name="price" step="0.01" required>
+    </div>
+    
+    <div class="form-group">
+      <label for="stock">Stock:</label>
+      <input type="number" id="stock" name="stock" required>
+    </div>
+    
+    <div class="form-group">
+      <label for="category">Categoría:</label>
+      <input type="text" id="category" name="category" required>
+    </div>
+    
+    <button type="submit">Agregar Producto</button>
+  </form>
+</div>
+
+<!-- Lista de productos -->
+<div class="products-container">
+  <h3>Lista de Productos</h3>
+  <ul id="products-list">
+    {{#each products}}
+      <li data-id="{{this.id}}" class="product-item">
+        <div class="product-info">
+          <h4>{{this.title}}</h4>
+          <p>{{this.description}}</p>
+          <p><strong>Precio:</strong> ${{this.price}}</p>
+          <p><strong>Stock:</strong> {{this.stock}}</p>
+          <p><strong>Categoría:</strong> {{this.category}}</p>
+          <p><strong>Código:</strong> {{this.code}}</p>
+        </div>
+        <div class="product-actions">
+          <button onclick="addToCart({{this.id}})" class="btn-cart">Agregar al Carrito</button>
+          <button onclick="deleteProduct({{this.id}})" class="btn-delete">Eliminar</button>
+        </div>
+      </li>
+    {{/each}}
+  </ul>
+</div>
+

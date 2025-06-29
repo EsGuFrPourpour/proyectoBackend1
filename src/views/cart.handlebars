@@ -1,13 +1,233 @@
 <h2>Carrito de Compras</h2>
+
+<div id="notifications"></div>
+
 {{#if products.length}}
-  <ul>
-    {{#each products}}
-      <li>
-        <p>Producto ID: {{this.product}}</p>
-        <p>Cantidad: {{this.quantity}}</p>
-      </li>
-    {{/each}}
-  </ul>
+  <div class="cart-container">
+    <ul class="cart-items" id="cart-items">
+      {{#each products}}
+        <li class="cart-item" data-product-id="{{this.id}}">
+          <div class="product-info">
+            <h4>{{this.title}}</h4>
+            <p>{{this.description}}</p>
+            <p><strong>Precio unitario:</strong> $<span class="unit-price">{{this.price}}</span></p>
+            <p><strong>Código:</strong> {{this.code}}</p>
+          </div>
+          <div class="quantity-controls">
+            <label>Cantidad:</label>
+            <div class="quantity-input">
+              <button onclick="updateQuantity({{../cartId}}, {{this.id}}, {{this.quantity}}, -1)" class="btn-quantity">-</button>
+              <span class="quantity" data-product-id="{{this.id}}">{{this.quantity}}</span>
+              <button onclick="updateQuantity({{../cartId}}, {{this.id}}, {{this.quantity}}, 1)" class="btn-quantity">+</button>
+            </div>
+            <p><strong>Subtotal:</strong> $<span class="subtotal" data-product-id="{{this.id}}">{{this.total}}</span></p>
+          </div>
+          <div class="item-actions">
+            <button onclick="removeFromCart({{../cartId}}, {{this.id}})" class="btn-remove">Eliminar</button>
+          </div>
+        </li>
+      {{/each}}
+    </ul>
+    
+    <div class="cart-summary">
+      <h3>Total del Carrito: $<span id="cart-total">{{total}}</span></h3>
+      <button onclick="checkout()" class="btn-checkout">Finalizar Compra</button>
+      <a href="/" class="btn-continue">Seguir Comprando</a>
+    </div>
+  </div>
 {{else}}
-  <p>El carrito está vacío.</p>
+  <div class="empty-cart" id="empty-cart">
+    <p>El carrito está vacío.</p>
+    <a href="/" class="btn-shop">Ver Productos</a>
+  </div>
 {{/if}}
+
+<!-- Cargar el JavaScript específico del carrito DESPUÉS del layout -->
+<script src="/js/cart.js"></script>
+
+<style>
+.cart-container {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.cart-items {
+  list-style: none;
+  padding: 0;
+}
+
+.cart-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  margin-bottom: 15px;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  background: white;
+}
+
+.product-info {
+  flex: 2;
+}
+
+.product-info h4 {
+  margin: 0 0 10px 0;
+  color: #495057;
+}
+
+.product-info p {
+  margin: 5px 0;
+  color: #6c757d;
+}
+
+.quantity-controls {
+  flex: 1;
+  text-align: center;
+  padding: 0 20px;
+}
+
+.quantity-input {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.btn-quantity {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.btn-quantity:hover {
+  background-color: #0056b3;
+}
+
+.quantity {
+  font-weight: bold;
+  font-size: 18px;
+  min-width: 30px;
+}
+
+.item-actions {
+  flex: 0;
+}
+
+.btn-remove {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-remove:hover {
+  background-color: #c82333;
+}
+
+.cart-summary {
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  text-align: center;
+  margin-top: 20px;
+}
+
+.cart-summary h3 {
+  color: #495057;
+  margin-bottom: 20px;
+}
+
+.btn-checkout {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  margin-right: 10px;
+}
+
+.btn-checkout:hover {
+  background-color: #218838;
+}
+
+.btn-continue {
+  background-color: #6c757d;
+  color: white;
+  text-decoration: none;
+  padding: 12px 24px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.btn-continue:hover {
+  background-color: #5a6268;
+}
+
+.empty-cart {
+  text-align: center;
+  padding: 40px;
+}
+
+.btn-shop {
+  background-color: #007bff;
+  color: white;
+  text-decoration: none;
+  padding: 12px 24px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.btn-shop:hover {
+  background-color: #0056b3;
+}
+
+/* Estilos para notificaciones */
+.notifications {
+  margin-bottom: 20px;
+  border-radius: 4px;
+  min-height: 20px;
+}
+
+.notifications .success {
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  color: #155724;
+  padding: 10px;
+  border-radius: 4px;
+}
+
+.notifications .error {
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  color: #721c24;
+  padding: 10px;
+  border-radius: 4px;
+}
+
+.notifications .warning {
+  background: #fff3cd;
+  border: 1px solid #ffeaa7;
+  color: #856404;
+  padding: 10px;
+  border-radius: 4px;
+}
+
+.notifications .info {
+  background: #d1ecf1;
+  border: 1px solid #bee5eb;
+  color: #0c5460;
+  padding: 10px;
+  border-radius: 4px;
+}
+</style>

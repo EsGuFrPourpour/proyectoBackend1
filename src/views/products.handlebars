@@ -1,14 +1,20 @@
 <h2>Lista de Productos</h2>
 <div id="notifications"></div>
-<ul id="products-list">
-  {{#each products}}
-    <li data-id="{{this.id}}">
-      <h3>{{this.title}}</h3>
-      <p>{{this.description}}</p>
-      <p>Precio: ${{this.price}}</p>
-      <p>Stock: {{this.stock}}</p>
-      <p>Categoría: {{this.category}}</p>
-      <button onclick="addToCart({{this.id}})">Agregar al Carrito</button>
-    </li>
-  {{/each}}
-</ul>
+
+{{#if products.length}}
+  <ul id="products-list">
+    {{#each products}}
+      <li data-id="{{this._id}}">
+        <h3>{{this.title}}</h3>
+        <p>{{this.description}}</p>
+        <p>Precio: ${{this.price}}</p>
+        <p>Stock: {{this.stock}}</p>
+        <p>Categoría: {{this.category}}</p>
+        <p>Código: {{this.code}}</p>
+        <button onclick="addToCart('{{this._id}}')">Agregar al Carrito</button>
+      </li>
+    {{/each}}
+  </ul>
+{{else}}
+  <p>No hay productos disponibles. <a href="/realtimeproducts">Agregar productos</a></p>
+{{/if}}

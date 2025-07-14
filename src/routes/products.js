@@ -1,16 +1,32 @@
 const express = require("express")
-const ProductManager = require("../managers/ProductManager")
+const productManager = require("../managers/ProductManager") // Importar instancia singleton (SIN new)
 const { emitProductAdded, emitProductUpdated, emitProductDeleted } = require("../socket/socketManager")
 
 const router = express.Router()
-const productManager = new ProductManager()
 
+// GET con query params para paginación, filtros y ordenamiento
 router.get("/", async (req, res) => {
   try {
-    const products = await productManager.getProducts()
-    res.json(products)
+    console.log("=== OBTENIENDO PRODUCTOS CON QUERY PARAMS ===")
+    console.log("Query params:", req.query)
+
+    const options = {
+      limit: req.query.limit,
+      page: req.query.page,
+      sort: req.query.sort,
+      query: req.query.query,
+      category: req.query.category,
+      status: req.query.status,
+    }
+
+    const result = await productManager.getProducts(options)
+    res.json(result)
   } catch (error) {
-    res.status(500).json({ error: "Error al obtener productos" })
+    console.error("Error obteniendo productos:", error)
+    res.status(500).json({
+      status: "error",
+      error: "Error al obtener productos",
+    })
   }
 })
 
@@ -38,7 +54,7 @@ router.post("/", async (req, res) => {
       price: Number(price),
       stock: Number(stock),
       category,
-      thumbnails,
+      thumbnails: thumbnails || [],
     })
 
     // Emitir evento Socket.IO
@@ -47,7 +63,7 @@ router.post("/", async (req, res) => {
     res.status(201).json(newProduct)
   } catch (error) {
     console.error("Error creating product:", error)
-    res.status(500).json({ error: "Error al crear el producto" })
+    res.status(500).json({ error: error.message })
   }
 })
 
@@ -61,7 +77,8 @@ router.put("/:pid", async (req, res) => {
 
     res.json(updatedProduct)
   } catch (error) {
-    res.status(500).json({ error: "Error al actualizar el producto" })
+    console.error("Error updating product:", error)
+    res.status(500).json({ error: error.message })
   }
 })
 
@@ -75,6 +92,7 @@ router.delete("/:pid", async (req, res) => {
 
     res.json({ message: "Producto eliminado" })
   } catch (error) {
+    console.error("Error deleting product:", error)
     res.status(500).json({ error: "Error al eliminar el producto" })
   }
 })

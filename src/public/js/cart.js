@@ -1,4 +1,3 @@
-// JavaScript específico para la página del carrito
 console.log("Cargando cart.js")
 
 // Variables globales para el carrito
@@ -12,7 +11,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Obtener el ID del carrito desde la URL
   const pathParts = window.location.pathname.split("/")
   if (pathParts[1] === "cart" && pathParts[2]) {
-    currentCartId = Number.parseInt(pathParts[2])
+    currentCartId = pathParts[2]
     console.log("Cart ID detectado:", currentCartId)
   }
 
@@ -21,7 +20,53 @@ document.addEventListener("DOMContentLoaded", () => {
     cartSocket = window.io()
     setupCartSocketEvents()
   }
+
+  // Configurar event listeners
+  setupEventListeners()
 })
+
+// Configurar todos los event listeners
+function setupEventListeners() {
+  // Event listener para botones de incrementar cantidad
+  document.addEventListener("click", (e) => {
+    if (e.target.classList.contains("btn-increase")) {
+      e.preventDefault()
+      const cartId = e.target.dataset.cartId
+      const productId = e.target.dataset.productId
+      const currentQuantity = Number.parseInt(e.target.dataset.currentQuantity)
+      updateQuantity(cartId, productId, currentQuantity, 1)
+    }
+  })
+
+  // Event listener para botones de decrementar cantidad
+  document.addEventListener("click", (e) => {
+    if (e.target.classList.contains("btn-decrease")) {
+      e.preventDefault()
+      const cartId = e.target.dataset.cartId
+      const productId = e.target.dataset.productId
+      const currentQuantity = Number.parseInt(e.target.dataset.currentQuantity)
+      updateQuantity(cartId, productId, currentQuantity, -1)
+    }
+  })
+
+  // Event listener para botones de eliminar
+  document.addEventListener("click", (e) => {
+    if (e.target.classList.contains("btn-remove")) {
+      e.preventDefault()
+      const cartId = e.target.dataset.cartId
+      const productId = e.target.dataset.productId
+      removeFromCart(cartId, productId)
+    }
+  })
+
+  // Event listener para botón de checkout
+  document.addEventListener("click", (e) => {
+    if (e.target.id === "checkout-btn") {
+      e.preventDefault()
+      checkout()
+    }
+  })
+}
 
 // Configurar eventos Socket.IO para el carrito
 function setupCartSocketEvents() {
@@ -35,20 +80,26 @@ function setupCartSocketEvents() {
     console.log("Evento product_added_to_cart recibido:", data)
     if (data.cartId == currentCartId) {
       showCartNotification(`Producto añadido al carrito`, "success")
+      // Recargar la página para mostrar el nuevo producto
+      setTimeout(() => {
+        window.location.reload()
+      }, 1000)
     }
   })
 
   cartSocket.on("product_removed_from_cart", (data) => {
     console.log("Evento product_removed_from_cart recibido:", data)
     if (data.cartId == currentCartId) {
-      console.log("Eliminando producto del DOM:", data.productId)
-      // Eliminar el elemento del DOM
       const productElement = document.querySelector(`[data-product-id="${data.productId}"]`)
       if (productElement) {
-        productElement.remove()
-        updateCartTotal()
-        checkIfCartEmpty()
-        showCartNotification("Producto eliminado", "success")
+        productElement.style.transition = "opacity 0.3s ease"
+        productElement.style.opacity = "0"
+        setTimeout(() => {
+          productElement.remove()
+          updateCartTotal()
+          checkIfCartEmpty()
+          showCartNotification("Producto eliminado", "success")
+        }, 300)
       }
     }
   })
@@ -56,52 +107,8 @@ function setupCartSocketEvents() {
   cartSocket.on("product_quantity_updated", (data) => {
     console.log("Evento product_quantity_updated recibido:", data)
     if (data.cartId == currentCartId) {
-      console.log("Actualizando cantidad en DOM:", data)
-      // Actualizar la cantidad en el DOM
-      const quantityElement = document.querySelector(`.quantity[data-product-id="${data.productId}"]`)
-      if (quantityElement) {
-        quantityElement.textContent = data.quantity
-
-        // Actualizar el subtotal
-        const unitPriceElement = document.querySelector(`[data-product-id="${data.productId}"] .unit-price`)
-        const subtotalElement = document.querySelector(`.subtotal[data-product-id="${data.productId}"]`)
-
-        if (unitPriceElement && subtotalElement) {
-          const unitPrice = Number.parseFloat(unitPriceElement.textContent)
-          const newSubtotal = unitPrice * data.quantity
-          subtotalElement.textContent = newSubtotal.toFixed(2)
-        }
-
-        // Actualizar los botones de cantidad
-        const cartItem = document.querySelector(`[data-product-id="${data.productId}"]`)
-        if (cartItem) {
-          const minusButton = cartItem.querySelector(".btn-quantity:first-of-type")
-          const plusButton = cartItem.querySelector(".btn-quantity:last-of-type")
-
-          if (minusButton) {
-            minusButton.setAttribute(
-              "onclick",
-              `updateQuantity(${currentCartId}, ${data.productId}, ${data.quantity}, -1)`,
-            )
-          }
-          if (plusButton) {
-            plusButton.setAttribute(
-              "onclick",
-              `updateQuantity(${currentCartId}, ${data.productId}, ${data.quantity}, 1)`,
-            )
-          }
-        }
-
-        updateCartTotal()
-        showCartNotification("Cantidad actualizada", "success")
-      }
-    }
-  })
-
-  cartSocket.on("cart_updated", (data) => {
-    console.log("Evento cart_updated recibido:", data)
-    if (data.cartId == currentCartId) {
-      console.log("Carrito actualizado:", data.cart)
+      updateQuantityInDOM(data.productId, data.quantity, data.unitPrice, data.subtotal)
+      showCartNotification("Cantidad actualizada", "success")
     }
   })
 
@@ -110,20 +117,52 @@ function setupCartSocketEvents() {
   })
 }
 
+// Función para actualizar cantidad en el DOM
+function updateQuantityInDOM(productId, newQuantity, unitPrice, newSubtotal) {
+  console.log("Actualizando DOM:", { productId, newQuantity, unitPrice, newSubtotal })
+
+  // Actualizar el span de cantidad
+  const quantityElement = document.querySelector(`.quantity[data-product-id="${productId}"]`)
+  if (quantityElement) {
+    quantityElement.textContent = newQuantity
+    console.log("Cantidad actualizada en DOM")
+  }
+
+  // Actualizar los data attributes de los botones
+  const buttons = document.querySelectorAll(`[data-product-id="${productId}"].btn-quantity`)
+  buttons.forEach((button) => {
+    button.dataset.currentQuantity = newQuantity
+    console.log("Data attribute actualizado:", button.dataset.currentQuantity)
+  })
+
+  // Actualizar el subtotal
+  const subtotalElement = document.querySelector(`.subtotal[data-product-id="${productId}"]`)
+  if (subtotalElement && newSubtotal !== undefined) {
+    subtotalElement.textContent = newSubtotal.toFixed(2)
+    console.log("Subtotal actualizado en DOM")
+  }
+
+  // Actualizar el total general
+  updateCartTotal()
+}
+
 // Funciones para manejar el carrito
 async function removeFromCart(cartId, productId) {
   if (confirm("¿Estás seguro de que quieres eliminar este producto del carrito?")) {
     try {
       console.log(`Eliminando producto ${productId} del carrito ${cartId}`)
+      showCartNotification("Eliminando producto...", "info")
+
       const response = await fetch(`/api/carts/${cartId}/product/${productId}`, {
         method: "DELETE",
       })
 
       if (response.ok) {
-        showCartNotification("Eliminando producto...", "info")
-        // No recargamos la página, Socket.IO se encargará de actualizar
+        console.log("Producto eliminado exitosamente")
+        // El evento Socket.IO se encargará de actualizar la UI
       } else {
-        showCartNotification("Error al eliminar el producto", "error")
+        const errorData = await response.json()
+        showCartNotification(`Error: ${errorData.error}`, "error")
       }
     } catch (error) {
       console.error("Error:", error)
@@ -154,10 +193,12 @@ async function updateQuantity(cartId, productId, currentQuantity, change) {
     })
 
     if (response.ok) {
-      console.log("Petición de actualización enviada correctamente")
-      // No recargamos la página, Socket.IO se encargará de actualizar
+      const result = await response.json()
+      console.log("Petición de actualización enviada correctamente:", result)
+      // El evento Socket.IO se encargará de actualizar la UI
     } else {
-      showCartNotification("Error al actualizar la cantidad", "error")
+      const errorData = await response.json()
+      showCartNotification(`Error: ${errorData.error}`, "error")
     }
   } catch (error) {
     console.error("Error:", error)
@@ -180,7 +221,6 @@ function showCartNotification(message, type = "info") {
   }
 }
 
-// Función para actualizar el total del carrito
 function updateCartTotal() {
   let total = 0
   const subtotalElements = document.querySelectorAll(".subtotal")
@@ -200,11 +240,9 @@ function updateCartTotal() {
   console.log("Total actualizado:", total)
 }
 
-// Función para verificar si el carrito está vacío
 function checkIfCartEmpty() {
   const cartItems = document.getElementById("cart-items")
   if (cartItems && cartItems.children.length === 0) {
-    // El carrito está vacío, mostrar mensaje
     const cartContainer = document.querySelector(".cart-container")
     if (cartContainer) {
       cartContainer.innerHTML = `

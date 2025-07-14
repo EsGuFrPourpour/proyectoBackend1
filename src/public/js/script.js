@@ -5,7 +5,28 @@ let mainSocket = null
 async function addToCart(productId) {
   try {
     console.log("Agregando producto al carrito:", productId)
-    const response = await fetch("/api/carts/1/product/" + productId, {
+
+    // Primero obtener o crear un carrito
+    let cartId = localStorage.getItem("cartId")
+
+    if (!cartId) {
+      // Crear un nuevo carrito
+      const createCartResponse = await fetch("/api/carts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+
+      if (createCartResponse.ok) {
+        const newCart = await createCartResponse.json()
+        cartId = newCart._id
+        localStorage.setItem("cartId", cartId)
+        console.log("Nuevo carrito creado:", cartId)
+      } else {
+        throw new Error("No se pudo crear el carrito")
+      }
+    }
+
+    const response = await fetch(`/api/carts/${cartId}/product/${productId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     })
@@ -14,6 +35,8 @@ async function addToCart(productId) {
 
     if (response.ok) {
       showNotification("Producto añadido al carrito", "success")
+      // Actualizar el enlace del carrito en la navegación
+      updateCartLink(cartId)
     } else {
       const errorData = await response.json()
       console.error("Error del servidor:", errorData)
@@ -23,6 +46,14 @@ async function addToCart(productId) {
     console.error("Error:", error)
     showNotification("Error al conectar con el servidor", "error")
   }
+}
+
+// Función para actualizar el enlace del carrito
+function updateCartLink(cartId) {
+  const cartLinks = document.querySelectorAll('a[href*="/cart/"]')
+  cartLinks.forEach((link) => {
+    link.href = `/cart/${cartId}`
+  })
 }
 
 // Función para eliminar producto (WebSocket)
@@ -54,6 +85,12 @@ document.addEventListener("DOMContentLoaded", () => {
   // Verificar si estamos en la página del carrito
   const isCartPage = window.location.pathname.includes("/cart/")
   console.log("¿Es página del carrito?", isCartPage)
+
+  // Cargar cartId del localStorage si existe
+  const cartId = localStorage.getItem("cartId")
+  if (cartId) {
+    updateCartLink(cartId)
+  }
 
   if (!isCartPage && window.io) {
     console.log("Inicializando Socket.IO para páginas principales")
@@ -127,7 +164,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     mainSocket.on("product_added_to_cart", (data) => {
       console.log("Producto añadido al carrito:", data)
-      showNotification(`Producto añadido al carrito`, "success")
+      showNotification(`Producto ${data.productId} añadido al carrito ${data.cartId}`, "success")
     })
 
     // Eventos de confirmación WebSocket
@@ -165,7 +202,7 @@ function addProductToList(product) {
   const productsList = document.getElementById("products-list")
   if (productsList) {
     const newProduct = document.createElement("li")
-    newProduct.setAttribute("data-id", product.id)
+    newProduct.setAttribute("data-id", product._id)
     newProduct.className = "product-item"
     newProduct.innerHTML = `
       <div class="product-info">
@@ -177,8 +214,8 @@ function addProductToList(product) {
         <p><strong>Código:</strong> ${product.code}</p>
       </div>
       <div class="product-actions">
-        <button onclick="addToCart(${product.id})" class="btn-cart">Agregar al Carrito</button>
-        <button onclick="deleteProduct(${product.id})" class="btn-delete">Eliminar</button>
+        <button onclick="addToCart('${product._id}')" class="btn-cart">Agregar al Carrito</button>
+        <button onclick="deleteProduct('${product._id}')" class="btn-delete">Eliminar</button>
       </div>
     `
     productsList.appendChild(newProduct)
@@ -189,7 +226,7 @@ function addProductToList(product) {
 }
 
 function updateProductInList(product) {
-  const productItem = document.querySelector(`li[data-id="${product.id}"]`)
+  const productItem = document.querySelector(`li[data-id="${product._id}"]`)
   if (productItem) {
     productItem.innerHTML = `
       <div class="product-info">
@@ -201,8 +238,8 @@ function updateProductInList(product) {
         <p><strong>Código:</strong> ${product.code}</p>
       </div>
       <div class="product-actions">
-        <button onclick="addToCart(${product.id})" class="btn-cart">Agregar al Carrito</button>
-        <button onclick="deleteProduct(${product.id})" class="btn-delete">Eliminar</button>
+        <button onclick="addToCart('${product._id}')" class="btn-cart">Agregar al Carrito</button>
+        <button onclick="deleteProduct('${product._id}')" class="btn-delete">Eliminar</button>
       </div>
     `
   }

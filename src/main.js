@@ -3,6 +3,7 @@ const exphbs = require("express-handlebars")
 const path = require("path")
 const { Server } = require("socket.io")
 const { setSocketIO } = require("./socket/socketManager")
+const database = require("./config/database")
 const productRouter = require("./routes/products")
 const cartRouter = require("./routes/carts")
 const viewsRouter = require("./routes/views")
@@ -20,70 +21,89 @@ app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(express.static(path.join(__dirname, "public")))
 
-// Rutas
-app.use("/api/products", productRouter)
-app.use("/api/carts", cartRouter)
-app.use("/", viewsRouter)
+// Conectar a MongoDB
+async function startServer() {
+  try {
+    // Conectar a la base de datos
+    await database.connect()
 
-// Crear servidor HTTP
-const server = app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`)
-})
+    // Rutas
+    app.use("/api/products", productRouter)
+    app.use("/api/carts", cartRouter)
+    app.use("/", viewsRouter)
 
-// Configurar Socket.IO
-const io = new Server(server)
+    // Crear servidor HTTP
+    const server = app.listen(PORT, () => {
+      console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`)
+      console.log(`📊 Base de datos: MongoDB`)
+    })
 
-// Configurar el socket manager
-setSocketIO(io)
+    // Configurar Socket.IO
+    const io = new Server(server)
 
-io.on("connection", (socket) => {
-  console.log("Cliente Socket.IO conectado:", socket.id)
+    // Configurar el socket manager
+    setSocketIO(io)
 
-  // Manejar creación de productos por WebSocket
-  socket.on("create_product", async (productData) => {
-    try {
-      const ProductManager = require("./managers/ProductManager")
-      const productManager = new ProductManager()
+    io.on("connection", (socket) => {
+      console.log("Cliente Socket.IO conectado:", socket.id)
 
-      console.log("Creando producto por WebSocket:", productData)
-      const newProduct = await productManager.addProduct(productData)
+      // Manejar creación de productos por WebSocket
+      socket.on("create_product", async (productData) => {
+        try {
+          const productManager = require("./managers/ProductManager")
 
-      // Emitir a todos los clientes
-      io.emit("product_added", newProduct)
+          console.log("Creando producto por WebSocket:", productData)
+          const newProduct = await productManager.addProduct(productData)
 
-      // Confirmar al cliente que envió
-      socket.emit("product_created_success", newProduct)
-    } catch (error) {
-      console.error("Error creando producto por WebSocket:", error)
-      socket.emit("product_created_error", { error: error.message })
-    }
-  })
+          // Emitir a todos los clientes
+          io.emit("product_added", newProduct)
 
-  // Manejar eliminación de productos por WebSocket
-  socket.on("delete_product", async (productId) => {
-    try {
-      const ProductManager = require("./managers/ProductManager")
-      const productManager = new ProductManager()
+          // Confirmar al cliente que envió
+          socket.emit("product_created_success", newProduct)
+        } catch (error) {
+          console.error("Error creando producto por WebSocket:", error)
+          socket.emit("product_created_error", { error: error.message })
+        }
+      })
 
-      console.log("Eliminando producto por WebSocket:", productId)
-      const deleted = await productManager.deleteProduct(productId)
+      // Manejar eliminación de productos por WebSocket
+      socket.on("delete_product", async (productId) => {
+        try {
+          const productManager = require("./managers/ProductManager")
 
-      if (deleted) {
-        // Emitir a todos los clientes
-        io.emit("product_deleted", { pid: productId })
+          console.log("Eliminando producto por WebSocket:", productId)
+          const deleted = await productManager.deleteProduct(productId)
 
-        // Confirmar al cliente que envió
-        socket.emit("product_deleted_success", { pid: productId })
-      } else {
-        socket.emit("product_deleted_error", { error: "Producto no encontrado" })
-      }
-    } catch (error) {
-      console.error("Error eliminando producto por WebSocket:", error)
-      socket.emit("product_deleted_error", { error: error.message })
-    }
-  })
+          if (deleted) {
+            // Emitir a todos los clientes
+            io.emit("product_deleted", { pid: productId })
 
-  socket.on("disconnect", () => {
-    console.log("Cliente Socket.IO desconectado:", socket.id)
-  })
-})
+            // Confirmar al cliente que envió
+            socket.emit("product_deleted_success", { pid: productId })
+          } else {
+            socket.emit("product_deleted_error", { error: "Producto no encontrado" })
+          }
+        } catch (error) {
+          console.error("Error eliminando producto por WebSocket:", error)
+          socket.emit("product_deleted_error", { error: error.message })
+        }
+      })
+
+      socket.on("disconnect", () => {
+        console.log("Cliente Socket.IO desconectado:", socket.id)
+      })
+    })
+
+    // Manejar cierre graceful
+    process.on("SIGINT", async () => {
+      console.log("\n🔄 Cerrando servidor...")
+      await database.disconnect()
+      process.exit(0)
+    })
+  } catch (error) {
+    console.error("❌ Error iniciando servidor:", error)
+    process.exit(1)
+  }
+}
+
+startServer()

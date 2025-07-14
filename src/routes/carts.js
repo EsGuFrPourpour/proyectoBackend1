@@ -1,6 +1,6 @@
 const express = require("express")
-const CartManager = require("../managers/CartManager")
-const ProductManager = require("../managers/ProductManager")
+const cartManager = require("../managers/CartManager")
+const productManager = require("../managers/ProductManager")
 const {
   emitProductAddedToCart,
   emitCartUpdated,
@@ -9,8 +9,6 @@ const {
 } = require("../socket/socketManager")
 
 const router = express.Router()
-const cartManager = new CartManager()
-const productManager = new ProductManager()
 
 // Crear un nuevo carrito
 router.post("/", async (req, res) => {
@@ -26,31 +24,15 @@ router.post("/", async (req, res) => {
 // Obtener un carrito por ID con información detallada de productos
 router.get("/:cid", async (req, res) => {
   try {
-    const cart = await cartManager.getCartById(req.params.cid)
-    if (!cart) return res.status(404).json({ error: "Carrito no encontrado" })
+    console.log("=== OBTENIENDO CARRITO PARA API ===")
+    const cartWithDetails = await cartManager.getCartWithDetails(req.params.cid)
 
-    // Obtener información detallada de los productos
-    const cartWithProductDetails = []
-
-    for (const item of cart.products) {
-      const product = await productManager.getProductById(item.product)
-      if (product) {
-        cartWithProductDetails.push({
-          ...product,
-          quantity: item.quantity,
-          total: product.price * item.quantity,
-        })
-      }
+    if (!cartWithDetails) {
+      return res.status(404).json({ error: "Carrito no encontrado" })
     }
 
-    const response = {
-      id: cart.id,
-      products: cartWithProductDetails,
-      totalItems: cartWithProductDetails.reduce((sum, item) => sum + item.quantity, 0),
-      totalPrice: cartWithProductDetails.reduce((sum, item) => sum + item.total, 0),
-    }
-
-    res.json(response)
+    console.log("Respuesta del carrito:", cartWithDetails)
+    res.json(cartWithDetails)
   } catch (error) {
     console.error("Error getting cart:", error)
     res.status(500).json({ error: "Error al obtener el carrito" })
@@ -73,10 +55,7 @@ router.post("/:cid/product/:pid", async (req, res) => {
 
     console.log("Producto agregado exitosamente, emitiendo eventos Socket.IO")
 
-    // Obtener información del producto para el evento
-    const product = await productManager.getProductById(req.params.pid)
-
-    // Emitir eventos Socket.IO
+    // Emitir eventos Socket.IO a TODAS las pestañas conectadas
     emitProductAddedToCart(req.params.cid, req.params.pid)
     emitCartUpdated(req.params.cid, cart)
 
@@ -105,11 +84,11 @@ router.delete("/:cid/product/:pid", async (req, res) => {
     }
 
     console.log("Producto eliminado exitosamente, emitiendo eventos Socket.IO")
-    // Emitir eventos Socket.IO
+    // Emitir eventos Socket.IO a TODAS las pestañas conectadas
     emitProductRemovedFromCart(req.params.cid, req.params.pid)
     emitCartUpdated(req.params.cid, cart)
 
-    res.json(cart)
+    res.json({ success: true, message: "Producto eliminado del carrito" })
   } catch (error) {
     console.error("Error removing product from cart:", error)
     res.status(500).json({ error: "Error al eliminar el producto del carrito" })
@@ -130,21 +109,35 @@ router.put("/:cid/product/:pid", async (req, res) => {
       return res.status(400).json({ error: "La cantidad debe ser un número mayor a 0" })
     }
 
-    const cart = await cartManager.updateProductQuantity(req.params.cid, req.params.pid, quantity)
+    const result = await cartManager.updateProductQuantity(req.params.cid, req.params.pid, quantity)
 
-    if (!cart) {
+    if (!result) {
       return res.status(404).json({ error: "Carrito no encontrado" })
     }
 
     console.log("Cantidad actualizada exitosamente, emitiendo eventos Socket.IO")
-    // Emitir eventos Socket.IO
-    emitProductQuantityUpdated(req.params.cid, req.params.pid, quantity)
-    emitCartUpdated(req.params.cid, cart)
 
-    res.json(cart)
+    // Emitir eventos Socket.IO con información detallada
+    emitProductQuantityUpdated(req.params.cid, req.params.pid, {
+      quantity: result.newQuantity,
+      unitPrice: result.unitPrice,
+      subtotal: result.newSubtotal,
+    })
+    emitCartUpdated(req.params.cid, result.cart)
+
+    res.json({
+      success: true,
+      message: "Cantidad actualizada",
+      data: {
+        productId: result.productId,
+        newQuantity: result.newQuantity,
+        unitPrice: result.unitPrice,
+        newSubtotal: result.newSubtotal,
+      },
+    })
   } catch (error) {
     console.error("Error updating product quantity:", error)
-    res.status(500).json({ error: "Error al actualizar la cantidad del producto" })
+    res.status(500).json({ error: error.message })
   }
 })
 

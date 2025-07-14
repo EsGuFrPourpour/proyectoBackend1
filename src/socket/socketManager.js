@@ -36,11 +36,7 @@ const emitProductDeleted = (productId) => {
 
 const emitProductAddedToCart = (cartId, productId) => {
   if (io) {
-    const eventData = {
-      cartId: Number.parseInt(cartId),
-      productId: Number.parseInt(productId),
-      timestamp: new Date().toISOString(),
-    }
+    const eventData = { cartId, productId, timestamp: new Date() }
     io.emit("product_added_to_cart", eventData)
     console.log("Evento product_added_to_cart emitido:", eventData)
   }
@@ -48,11 +44,7 @@ const emitProductAddedToCart = (cartId, productId) => {
 
 const emitCartUpdated = (cartId, cart) => {
   if (io) {
-    const eventData = {
-      cartId: Number.parseInt(cartId),
-      cart,
-      timestamp: new Date().toISOString(),
-    }
+    const eventData = { cartId, cart, timestamp: new Date() }
     io.emit("cart_updated", eventData)
     console.log("Evento cart_updated emitido para carrito:", cartId)
   }
@@ -60,23 +52,19 @@ const emitCartUpdated = (cartId, cart) => {
 
 const emitProductRemovedFromCart = (cartId, productId) => {
   if (io) {
-    const eventData = {
-      cartId: Number.parseInt(cartId),
-      productId: Number.parseInt(productId),
-      timestamp: new Date().toISOString(),
-    }
+    const eventData = { cartId, productId, timestamp: new Date() }
     io.emit("product_removed_from_cart", eventData)
     console.log("Evento product_removed_from_cart emitido:", eventData)
   }
 }
 
-const emitProductQuantityUpdated = (cartId, productId, quantity) => {
+const emitProductQuantityUpdated = (cartId, productId, quantityData) => {
   if (io) {
     const eventData = {
-      cartId: Number.parseInt(cartId),
-      productId: Number.parseInt(productId),
-      quantity: Number.parseInt(quantity),
-      timestamp: new Date().toISOString(),
+      cartId,
+      productId,
+      ...quantityData,
+      timestamp: new Date(),
     }
     io.emit("product_quantity_updated", eventData)
     console.log("Evento product_quantity_updated emitido:", eventData)

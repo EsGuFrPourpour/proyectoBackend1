@@ -43,23 +43,115 @@
 <!-- Lista de productos -->
 <div class="products-container">
   <h3>Lista de Productos</h3>
-  <ul id="products-list">
-    {{#each products}}
-      <li data-id="{{this.id}}" class="product-item">
-        <div class="product-info">
-          <h4>{{this.title}}</h4>
-          <p>{{this.description}}</p>
-          <p><strong>Precio:</strong> ${{this.price}}</p>
-          <p><strong>Stock:</strong> {{this.stock}}</p>
-          <p><strong>Categoría:</strong> {{this.category}}</p>
-          <p><strong>Código:</strong> {{this.code}}</p>
-        </div>
-        <div class="product-actions">
-          <button onclick="addToCart({{this.id}})" class="btn-cart">Agregar al Carrito</button>
-          <button onclick="deleteProduct({{this.id}})" class="btn-delete">Eliminar</button>
-        </div>
-      </li>
-    {{/each}}
-  </ul>
+  {{#if products.length}}
+    <ul id="products-list">
+      {{#each products}}
+        <li data-id="{{this._id}}" class="product-item">
+          <div class="product-info">
+            <h4>{{this.title}}</h4>
+            <p>{{this.description}}</p>
+            <p><strong>Precio:</strong> ${{this.price}}</p>
+            <p><strong>Stock:</strong> {{this.stock}}</p>
+            <p><strong>Categoría:</strong> {{this.category}}</p>
+            <p><strong>Código:</strong> {{this.code}}</p>
+          </div>
+          <div class="product-actions">
+            <button onclick="addToCart('{{this._id}}')" class="btn-cart">Agregar al Carrito</button>
+            <button onclick="deleteProduct('{{this._id}}')" class="btn-delete">Eliminar</button>
+          </div>
+        </li>
+      {{/each}}
+    </ul>
+  {{else}}
+    <p>No hay productos disponibles.</p>
+  {{/if}}
 </div>
 
+<style>
+.product-form {
+  background: #f5f5f5;
+  padding: 20px;
+  margin-bottom: 30px;
+  border-radius: 8px;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.form-group input,
+.form-group textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.form-group textarea {
+  height: 80px;
+  resize: vertical;
+}
+
+.product-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px;
+  margin-bottom: 10px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: white;
+}
+
+.product-info {
+  flex: 1;
+}
+
+.product-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-cart {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-delete {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-cart:hover {
+  background-color: #218838;
+}
+
+.btn-delete:hover {
+  background-color: #c82333;
+}
+
+.notifications {
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  color: #155724;
+  padding: 10px;
+  margin-bottom: 20px;
+  border-radius: 4px;
+  min-height: 20px;
+}
+</style>

@@ -1,191 +1,194 @@
-const fs = require("fs").promises
-const path = require("path")
+const Cart = require("../models/Cart")
+const Product = require("../models/Product")
 
 class CartManager {
   constructor() {
-    this.path = path.join(__dirname, "../data/carts.json")
-    this.carts = []
-    this.initialized = false
-    console.log("CartManager creado, path:", this.path)
-  }
-
-  async init() {
-    if (!this.initialized) {
-      console.log("Inicializando CartManager...")
-      await this.loadCarts()
-      this.initialized = true
-      console.log("CartManager inicializado")
+    if (CartManager.instance) {
+      return CartManager.instance
     }
+    console.log("CartManager MongoDB creado")
+    CartManager.instance = this
+    return this
   }
 
-  async loadCarts() {
+  async createCart() {
+    console.log("=== CREANDO NUEVO CARRITO ===")
     try {
-      console.log("Cargando carritos desde:", this.path)
-      const data = await fs.readFile(this.path, "utf-8")
-      this.carts = JSON.parse(data)
-      console.log("Carritos cargados exitosamente:", this.carts.length)
-      console.log("Carritos:", this.carts)
+      const newCart = new Cart({ products: [] })
+      const savedCart = await newCart.save()
+      console.log("Carrito creado:", savedCart._id)
+      return savedCart
     } catch (error) {
-      console.error("Error loading carts:", error.message)
-      // Si el archivo no existe, crear uno con un carrito por defecto
-      this.carts = [
-        {
-          id: 1,
-          products: [],
-        },
-      ]
-      await this.saveCarts()
-      console.log("Archivo de carritos creado con carrito por defecto")
-    }
-  }
-
-  async saveCarts() {
-    try {
-      console.log("Guardando carritos...")
-      await fs.writeFile(this.path, JSON.stringify(this.carts, null, 2))
-      console.log("Carritos guardados exitosamente")
-    } catch (error) {
-      console.error("Error saving carts:", error)
+      console.error("Error creando carrito:", error)
       throw error
     }
   }
 
-  generateId() {
-    const id = this.carts.length ? Math.max(...this.carts.map((c) => c.id)) + 1 : 1
-    console.log("ID generado para carrito:", id)
-    return id
-  }
-
-  async createCart() {
-    console.log("Creando nuevo carrito...")
-    await this.init()
-    const newCart = {
-      id: this.generateId(),
-      products: [],
-    }
-    this.carts.push(newCart)
-    await this.saveCarts()
-    console.log("Carrito creado:", newCart)
-    return newCart
-  }
-
   async getCartById(id) {
-    console.log("Buscando carrito con ID:", id)
-    await this.init()
-    const cart = this.carts.find((c) => c.id === Number.parseInt(id))
-    console.log("Carrito encontrado:", cart)
-    return cart
+    console.log("=== OBTENIENDO CARRITO POR ID ===")
+    console.log("ID:", id)
+
+    try {
+      const cart = await Cart.findById(id).populate("products.product")
+      console.log("Carrito encontrado:", cart ? "Sí" : "No")
+
+      if (cart) {
+        console.log("Productos en carrito:", cart.products.length)
+      }
+
+      return cart
+    } catch (error) {
+      console.error("Error obteniendo carrito:", error)
+      return null
+    }
   }
 
   async addProductToCart(cartId, productId) {
-    console.log("=== INICIO addProductToCart ===")
-    console.log("cartId:", cartId, "productId:", productId)
+    console.log("=== AGREGANDO PRODUCTO AL CARRITO ===")
+    console.log("Cart ID:", cartId)
+    console.log("Product ID:", productId)
 
     try {
-      await this.init()
-      console.log("CartManager inicializado")
+      // Verificar que el producto existe
+      const product = await Product.findById(productId)
+      if (!product) {
+        throw new Error("Producto no encontrado")
+      }
 
-      const cart = await this.getCartById(cartId)
-      console.log("Cart obtenido:", cart)
+      // Verificar stock
+      if (product.stock <= 0) {
+        throw new Error("Producto sin stock")
+      }
 
+      const cart = await Cart.findById(cartId)
       if (!cart) {
-        console.error(`Carrito con ID ${cartId} no encontrado`)
-        return null
+        throw new Error("Carrito no encontrado")
       }
 
-      console.log("Productos actuales en el carrito:", cart.products)
+      // Buscar si el producto ya está en el carrito
+      const existingProductIndex = cart.products.findIndex((item) => item.product.toString() === productId)
 
-      const productIndex = cart.products.findIndex((p) => p.product === Number.parseInt(productId))
-      console.log("Índice del producto:", productIndex)
-
-      if (productIndex !== -1) {
-        console.log("Producto existe, incrementando cantidad")
-        cart.products[productIndex].quantity += 1
+      if (existingProductIndex !== -1) {
+        // Verificar stock antes de incrementar
+        if (cart.products[existingProductIndex].quantity >= product.stock) {
+          throw new Error("No hay suficiente stock")
+        }
+        cart.products[existingProductIndex].quantity += 1
+        console.log("Cantidad incrementada")
       } else {
-        console.log("Producto nuevo, agregando al carrito")
-        cart.products.push({ product: Number.parseInt(productId), quantity: 1 })
+        cart.products.push({ product: productId, quantity: 1 })
+        console.log("Producto agregado al carrito")
       }
 
-      console.log("Productos después de modificar:", cart.products)
+      const updatedCart = await cart.save()
+      console.log("Carrito actualizado")
 
-      console.log("Guardando carritos...")
-      await this.saveCarts()
-      console.log("Carritos guardados")
-
-      console.log(`Producto ${productId} añadido al carrito ${cartId}`)
-      console.log("=== FIN addProductToCart EXITOSO ===")
-      return cart
+      return updatedCart
     } catch (error) {
-      console.error("=== ERROR EN addProductToCart ===")
-      console.error("Error:", error)
-      console.error("Stack:", error.stack)
+      console.error("Error agregando producto al carrito:", error)
       throw error
     }
   }
 
   async removeProductFromCart(cartId, productId) {
-    console.log("=== INICIO removeProductFromCart ===")
-    console.log("cartId:", cartId, "productId:", productId)
+    console.log("=== ELIMINANDO PRODUCTO DEL CARRITO ===")
+    console.log("Cart ID:", cartId)
+    console.log("Product ID:", productId)
 
     try {
-      await this.init()
-      const cart = await this.getCartById(cartId)
-
+      const cart = await Cart.findById(cartId)
       if (!cart) {
-        console.error(`Carrito con ID ${cartId} no encontrado`)
-        return null
+        throw new Error("Carrito no encontrado")
       }
 
-      const productIndex = cart.products.findIndex((p) => p.product === Number.parseInt(productId))
+      cart.products = cart.products.filter((item) => item.product.toString() !== productId)
 
-      if (productIndex !== -1) {
-        cart.products.splice(productIndex, 1)
-        await this.saveCarts()
-        console.log(`Producto ${productId} eliminado del carrito ${cartId}`)
-        return cart
-      } else {
-        console.log("Producto no encontrado en el carrito")
-        return cart
-      }
+      const updatedCart = await cart.save()
+      console.log("Producto eliminado del carrito")
+
+      return updatedCart
     } catch (error) {
-      console.error("Error en removeProductFromCart:", error)
+      console.error("Error eliminando producto del carrito:", error)
       throw error
     }
   }
 
   async updateProductQuantity(cartId, productId, quantity) {
-    console.log("=== INICIO updateProductQuantity ===")
-    console.log("cartId:", cartId, "productId:", productId, "quantity:", quantity)
+    console.log("=== ACTUALIZANDO CANTIDAD EN CARRITO ===")
+    console.log("Cart ID:", cartId)
+    console.log("Product ID:", productId)
+    console.log("Nueva cantidad:", quantity)
 
     try {
-      await this.init()
-      const cart = await this.getCartById(cartId)
-
-      if (!cart) {
-        console.error(`Carrito con ID ${cartId} no encontrado`)
-        return null
+      if (quantity <= 0) {
+        return await this.removeProductFromCart(cartId, productId)
       }
 
-      const productIndex = cart.products.findIndex((p) => p.product === Number.parseInt(productId))
+      // Verificar stock
+      const product = await Product.findById(productId)
+      if (!product) {
+        throw new Error("Producto no encontrado")
+      }
+
+      if (quantity > product.stock) {
+        throw new Error("No hay suficiente stock")
+      }
+
+      const cart = await Cart.findById(cartId)
+      if (!cart) {
+        throw new Error("Carrito no encontrado")
+      }
+
+      const productIndex = cart.products.findIndex((item) => item.product.toString() === productId)
 
       if (productIndex !== -1) {
-        if (quantity <= 0) {
-          cart.products.splice(productIndex, 1)
-        } else {
-          cart.products[productIndex].quantity = quantity
+        cart.products[productIndex].quantity = quantity
+        const updatedCart = await cart.save()
+        console.log("Cantidad actualizada")
+
+        // Retornar información adicional para el frontend
+        return {
+          cart: updatedCart,
+          productId: productId,
+          newQuantity: quantity,
+          unitPrice: product.price,
+          newSubtotal: product.price * quantity,
         }
-        await this.saveCarts()
-        console.log(`Cantidad del producto ${productId} actualizada a ${quantity}`)
-        return cart
       } else {
-        console.log("Producto no encontrado en el carrito")
-        return cart
+        throw new Error("Producto no encontrado en el carrito")
       }
     } catch (error) {
-      console.error("Error en updateProductQuantity:", error)
+      console.error("Error actualizando cantidad:", error)
       throw error
+    }
+  }
+
+  // Método para obtener carrito con detalles de productos para vistas
+  async getCartWithDetails(cartId) {
+    try {
+      const cart = await Cart.findById(cartId).populate("products.product")
+      if (!cart) return null
+
+      const cartWithDetails = {
+        id: cart._id,
+        products: cart.products.map((item) => ({
+          ...item.product.toObject(),
+          quantity: item.quantity,
+          total: item.product.price * item.quantity,
+        })),
+        totalItems: cart.products.reduce((sum, item) => sum + item.quantity, 0),
+        totalPrice: cart.products.reduce((sum, item) => sum + item.product.price * item.quantity, 0),
+      }
+
+      return cartWithDetails
+    } catch (error) {
+      console.error("Error obteniendo carrito con detalles:", error)
+      return null
     }
   }
 }
 
-module.exports = CartManager
+// Crear instancia singleton
+const cartManagerInstance = new CartManager()
+
+module.exports = cartManagerInstance

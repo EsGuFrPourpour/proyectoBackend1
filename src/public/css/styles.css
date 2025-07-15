@@ -186,3 +186,21 @@ button:hover {
   padding: 10px;
   border-radius: 4px;
 }
+
+/* Estilos para imágenes placeholder */
+.product-image img[src*="no-image"] {
+  background-color: #f8f9fa;
+  border: 2px dashed #dee2e6;
+}
+
+.no-image {
+  width: 100%;
+  height: 100%;
+  background: #f8f9fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6c757d;
+  border: 2px dashed #dee2e6;
+  font-size: 14px;
+}

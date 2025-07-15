@@ -101,7 +101,12 @@ class CartManager {
         throw new Error("Carrito no encontrado")
       }
 
+      const initialLength = cart.products.length
       cart.products = cart.products.filter((item) => item.product.toString() !== productId)
+
+      if (cart.products.length === initialLength) {
+        throw new Error("Producto no encontrado en el carrito")
+      }
 
       const updatedCart = await cart.save()
       console.log("Producto eliminado del carrito")
@@ -131,7 +136,7 @@ class CartManager {
       }
 
       if (quantity > product.stock) {
-        throw new Error("No hay suficiente stock")
+        throw new Error(`No hay suficiente stock. Stock disponible: ${product.stock}`)
       }
 
       const cart = await Cart.findById(cartId)
@@ -159,6 +164,63 @@ class CartManager {
       }
     } catch (error) {
       console.error("Error actualizando cantidad:", error)
+      throw error
+    }
+  }
+
+  async updateCart(cartId, products) {
+    console.log("=== ACTUALIZANDO CARRITO COMPLETO ===")
+    console.log("Cart ID:", cartId)
+    console.log("Productos:", products)
+
+    try {
+      const cart = await Cart.findById(cartId)
+      if (!cart) {
+        throw new Error("Carrito no encontrado")
+      }
+
+      // Validar que todos los productos existen y tienen stock
+      for (const item of products) {
+        const product = await Product.findById(item.product)
+        if (!product) {
+          throw new Error(`Producto ${item.product} no encontrado`)
+        }
+        if (item.quantity > product.stock) {
+          throw new Error(`No hay suficiente stock para ${product.title}. Stock disponible: ${product.stock}`)
+        }
+        if (item.quantity <= 0) {
+          throw new Error(`La cantidad debe ser mayor a 0 para ${product.title}`)
+        }
+      }
+
+      cart.products = products
+      const updatedCart = await cart.save()
+      console.log("Carrito actualizado completamente")
+
+      return updatedCart
+    } catch (error) {
+      console.error("Error actualizando carrito:", error)
+      throw error
+    }
+  }
+
+  async clearCart(cartId) {
+    console.log("=== VACIANDO CARRITO ===")
+    console.log("Cart ID:", cartId)
+
+    try {
+      const cart = await Cart.findById(cartId)
+      if (!cart) {
+        throw new Error("Carrito no encontrado")
+      }
+
+      cart.products = []
+      const updatedCart = await cart.save()
+      console.log("Carrito vaciado")
+
+      return updatedCart
+    } catch (error) {
+      console.error("Error vaciando carrito:", error)
       throw error
     }
   }
@@ -192,3 +254,4 @@ class CartManager {
 const cartManagerInstance = new CartManager()
 
 module.exports = cartManagerInstance
+

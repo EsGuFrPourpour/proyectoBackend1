@@ -1,3 +1,6 @@
+// Cargar variables de entorno al inicio
+require("dotenv").config()
+
 const express = require("express")
 const exphbs = require("express-handlebars")
 const path = require("path")
@@ -9,10 +12,21 @@ const cartRouter = require("./routes/carts")
 const viewsRouter = require("./routes/views")
 
 const app = express()
-const PORT = 8080
+const PORT = process.env.PORT || 8080
 
-// Configurar Handlebars
-app.engine("handlebars", exphbs.engine())
+// Configurar Handlebars con helpers
+const hbs = exphbs.create({
+  helpers: {
+    eq: (a, b) => a === b,
+    ne: (a, b) => a !== b,
+    gt: (a, b) => a > b,
+    lt: (a, b) => a < b,
+    and: (a, b) => a && b,
+    or: (a, b) => a || b,
+  },
+})
+
+app.engine("handlebars", hbs.engine)
 app.set("view engine", "handlebars")
 app.set("views", path.join(__dirname, "views"))
 
@@ -36,6 +50,11 @@ async function startServer() {
     const server = app.listen(PORT, () => {
       console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`)
       console.log(`📊 Base de datos: MongoDB`)
+      console.log(`🌍 Entorno: ${process.env.NODE_ENV || "development"}`)
+      console.log(`\n📋 URLs disponibles:`)
+      console.log(`   🏠 Productos: http://localhost:${PORT}/products`)
+      console.log(`   ⚡ Gestión: http://localhost:${PORT}/realtimeproducts`)
+      console.log(`   📡 API: http://localhost:${PORT}/api/products`)
     })
 
     // Configurar Socket.IO

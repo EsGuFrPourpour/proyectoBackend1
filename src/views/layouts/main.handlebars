@@ -3,27 +3,55 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Tienda Online</title>
+  <title>Tienda Online - E-commerce</title>
   <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
   <header>
-    <h1>Tienda Online</h1>
-    <nav>
-      <a href="/">Productos</a> | 
-      <a href="/realtimeproducts">Productos en Tiempo Real</a> | 
-      <a href="/cart/1">Carrito</a>
-    </nav>
+    <div class="header-container">
+      <h1><a href="/products">🛍️ Tienda Online</a></h1>
+      <nav>
+        <a href="/products">📦 Productos</a>
+        <a href="/realtimeproducts">⚡ Gestión</a>
+        <a href="/cart/new" id="cart-link">🛒 Carrito</a>
+      </nav>
+    </div>
   </header>
+  
   <main>
     {{{body}}}
   </main>
+  
+  <footer>
+    <div class="footer-container">
+      <p>&copy; 2024 Tienda Online. Proyecto Backend - MongoDB + Express + Socket.IO</p>
+    </div>
+  </footer>
   
   <!-- Cargar Socket.IO primero -->
   <script src="/socket.io/socket.io.js"></script>
   
   <!-- Cargar script principal -->
   <script src="/js/script.js"></script>
+  
+  <!-- Helper para comparaciones en Handlebars -->
+  <script>
+    // Función global para actualizar enlaces del carrito
+    function updateGlobalCartLink(cartId) {
+      const cartLink = document.getElementById('cart-link');
+      if (cartLink && cartId) {
+        cartLink.href = `/cart/${cartId}`;
+      }
+    }
+    
+    // Cargar cartId del localStorage al cargar la página
+    document.addEventListener('DOMContentLoaded', () => {
+      const cartId = localStorage.getItem('cartId');
+      if (cartId) {
+        updateGlobalCartLink(cartId);
+      }
+    });
+  </script>
 </body>
 </html>
 

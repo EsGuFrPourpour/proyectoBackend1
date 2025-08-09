@@ -1,0 +1,269 @@
+<div class="auth-container">
+  <div class="auth-card">
+    <h2>Iniciar Sesión</h2>
+    
+    <div id="notifications"></div>
+    
+    <form id="loginForm" class="auth-form">
+      <div class="form-group">
+        <label for="email">Email:</label>
+        <input type="email" id="email" name="email" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="password">Contraseña:</label>
+        <input type="password" id="password" name="password" required>
+      </div>
+      
+      <button type="submit" class="btn-auth">Iniciar Sesión</button>
+    </form>
+    
+    <div class="auth-links">
+      <p>¿No tienes cuenta? <a href="/register">Regístrate aquí</a></p>
+      <p><a href="/products">Continuar sin cuenta</a></p>
+    </div>
+    
+    <div class="demo-accounts">
+      <h4>Cuentas de prueba:</h4>
+      <div class="demo-buttons">
+        <button onclick="fillDemoAdmin()" class="btn-demo admin">Admin Demo</button>
+        <button onclick="fillDemoUser()" class="btn-demo user">Usuario Demo</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  
+  const formData = new FormData(e.target);
+  const loginData = {
+    email: formData.get('email'),
+    password: formData.get('password')
+  };
+  
+  try {
+    showNotification('Iniciando sesión...', 'info');
+    
+    const response = await fetch('/api/sessions/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(loginData)
+    });
+    
+    const result = await response.json();
+    
+    if (response.ok) {
+      showNotification('Login exitoso', 'success');
+      
+      // Guardar token y datos del usuario
+      localStorage.setItem('authToken', result.token);
+      localStorage.setItem('userData', JSON.stringify(result.user));
+      
+      // Asignar carrito del usuario
+      if (result.user.cart) {
+        localStorage.setItem('cartId', result.user.cart);
+      }
+      
+      // Redirigir según el rol
+      setTimeout(() => {
+        if (result.user.role === 'admin') {
+          window.location.href = '/admin/dashboard';
+        } else {
+          window.location.href = '/products';
+        }
+      }, 1000);
+      
+    } else {
+      showNotification(result.error || 'Error en el login', 'error');
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    showNotification('Error al conectar con el servidor', 'error');
+  }
+});
+
+function fillDemoAdmin() {
+  document.getElementById('email').value = 'admin@ecommerce.com';
+  document.getElementById('password').value = 'admin123';
+}
+
+function fillDemoUser() {
+  document.getElementById('email').value = 'juan@email.com';
+  document.getElementById('password').value = 'user123';
+}
+
+function showNotification(message, type = 'info') {
+  const notificationsDiv = document.getElementById('notifications');
+  if (notificationsDiv) {
+    notificationsDiv.innerHTML = `<div class="notification ${type}">${message}</div>`;
+    
+    setTimeout(() => {
+      notificationsDiv.innerHTML = '';
+    }, 5000);
+  }
+}
+</script>
+
+<style>
+.auth-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 80vh;
+  padding: 20px;
+}
+
+.auth-card {
+  background: white;
+  padding: 40px;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  width: 100%;
+  max-width: 400px;
+}
+
+.auth-card h2 {
+  text-align: center;
+  margin-bottom: 30px;
+  color: #333;
+}
+
+.auth-form {
+  margin-bottom: 20px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+  color: #555;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  font-size: 16px;
+  box-sizing: border-box;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+}
+
+.btn-auth {
+  width: 100%;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 12px;
+  border-radius: 5px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.btn-auth:hover {
+  background-color: #0056b3;
+}
+
+.auth-links {
+  text-align: center;
+  margin-top: 20px;
+}
+
+.auth-links p {
+  margin: 10px 0;
+}
+
+.auth-links a {
+  color: #007bff;
+  text-decoration: none;
+}
+
+.auth-links a:hover {
+  text-decoration: underline;
+}
+
+.demo-accounts {
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid #eee;
+}
+
+.demo-accounts h4 {
+  text-align: center;
+  margin-bottom: 15px;
+  color: #666;
+  font-size: 14px;
+}
+
+.demo-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-demo {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.3s;
+}
+
+.btn-demo.admin {
+  background-color: #dc3545;
+  color: white;
+}
+
+.btn-demo.admin:hover {
+  background-color: #c82333;
+}
+
+.btn-demo.user {
+  background-color: #28a745;
+  color: white;
+}
+
+.btn-demo.user:hover {
+  background-color: #218838;
+}
+
+.notification {
+  padding: 10px 15px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+  text-align: center;
+}
+
+.notification.success {
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.notification.error {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.notification.info {
+  background-color: #d1ecf1;
+  color: #0c5460;
+  border: 1px solid #bee5eb;
+}
+</style>

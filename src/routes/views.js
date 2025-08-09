@@ -131,4 +131,57 @@ router.get("/cart/:cid", async (req, res) => {
   }
 })
 
+// Ruta para login
+router.get("/login", (req, res) => {
+  res.render("login")
+})
+
+// Ruta para registro
+router.get("/register", (req, res) => {
+  res.render("register")
+})
+
+// Ruta para perfil de usuario
+router.get("/profile", async (req, res) => {
+  try {
+    // En una implementación real, verificarías el token aquí
+    // Por ahora, renderizamos la vista que manejará la autenticación en el frontend
+    res.render("profile", {
+      user: {
+        id: "placeholder",
+        first_name: "Usuario",
+        last_name: "Demo",
+        email: "usuario@demo.com",
+        age: 25,
+        role: "user",
+        cart: null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+    })
+  } catch (error) {
+    console.error("Error loading profile:", error)
+    res.redirect("/login")
+  }
+})
+
+// Ruta para dashboard de admin
+router.get("/admin/dashboard", async (req, res) => {
+  try {
+    // Obtener estadísticas básicas
+    const totalProducts = await productManager.getProducts({ limit: 1 })
+    
+    res.render("admin-dashboard", {
+      stats: {
+        totalProducts: totalProducts.payload?.length || 0,
+        totalUsers: 0, // Se actualizará cuando implementemos la funcionalidad
+        totalCarts: 0
+      }
+    })
+  } catch (error) {
+    console.error("Error loading admin dashboard:", error)
+    res.status(500).send("Error al cargar el dashboard")
+  }
+})
+
 module.exports = router

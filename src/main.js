@@ -7,9 +7,16 @@ const path = require("path")
 const { Server } = require("socket.io")
 const { setSocketIO } = require("./socket/socketManager")
 const database = require("./config/database")
+
+// Importar configuración de Passport
+const { passport } = require("./config/passport")
+
+// Importar rutas
 const productRouter = require("./routes/products")
 const cartRouter = require("./routes/carts")
 const viewsRouter = require("./routes/views")
+const sessionsRouter = require("./routes/sessions")
+const usersRouter = require("./routes/users")
 
 const app = express()
 const PORT = process.env.PORT || 8080
@@ -35,6 +42,9 @@ app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(express.static(path.join(__dirname, "public")))
 
+// Inicializar Passport
+app.use(passport.initialize())
+
 // Conectar a MongoDB
 async function startServer() {
   try {
@@ -44,6 +54,8 @@ async function startServer() {
     // Rutas
     app.use("/api/products", productRouter)
     app.use("/api/carts", cartRouter)
+    app.use("/api/sessions", sessionsRouter) // 🆕 Rutas de autenticación
+    app.use("/api/users", usersRouter) // 🆕 Rutas de usuarios
     app.use("/", viewsRouter)
 
     // Crear servidor HTTP
@@ -54,7 +66,9 @@ async function startServer() {
       console.log(`\n📋 URLs disponibles:`)
       console.log(`   🏠 Productos: http://localhost:${PORT}/products`)
       console.log(`   ⚡ Gestión: http://localhost:${PORT}/realtimeproducts`)
-      console.log(`   📡 API: http://localhost:${PORT}/api/products`)
+      console.log(`   📡 API Productos: http://localhost:${PORT}/api/products`)
+      console.log(`   🔐 API Sesiones: http://localhost:${PORT}/api/sessions`)
+      console.log(`   👥 API Usuarios: http://localhost:${PORT}/api/users`)
     })
 
     // Configurar Socket.IO

@@ -14,6 +14,11 @@
         <a href="/products">📦 Productos</a>
         <a href="/realtimeproducts">⚡ Gestión</a>
         <a href="/cart/new" id="cart-link">🛒 Carrito</a>
+        
+        <!-- Enlaces de autenticación -->
+        <div class="auth-nav" id="auth-nav">
+          <!-- Se llenará dinámicamente con JavaScript -->
+        </div>
       </nav>
     </div>
   </header>
@@ -24,7 +29,7 @@
   
   <footer>
     <div class="footer-container">
-      <p>&copy; 2024 Tienda Online. Proyecto Backend - MongoDB + Express + Socket.IO</p>
+      <p>&copy; 2025 Tienda Online. created by Francisco Pourpour Proyecto Backend - MongoDB + Express + Socket.IO</p>
     </div>
   </footer>
   
@@ -44,8 +49,39 @@
       }
     }
     
-    // Cargar cartId del localStorage al cargar la página
+    // Actualizar navegación según estado de autenticación
+    function updateAuthNavigation() {
+      const authNav = document.getElementById('auth-nav');
+      const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+      const authToken = localStorage.getItem('authToken');
+      
+      if (authToken && userData.id) {
+        // Usuario autenticado
+        authNav.innerHTML = `
+          <a href="/profile">👤 ${userData.first_name || 'Perfil'}</a>
+          ${userData.role === 'admin' ? '<a href="/admin/dashboard">⚙️ Admin</a>' : ''}
+          <a href="#" onclick="logout()" style="color: #dc3545;">🚪 Salir</a>
+        `;
+      } else {
+        // Usuario no autenticado
+        authNav.innerHTML = `
+          <a href="/login">🔐 Iniciar Sesión</a>
+          <a href="/register">📝 Registrarse</a>
+        `;
+      }
+    }
+
+    function logout() {
+      if (confirm('¿Estás seguro de que quieres cerrar sesión?')) {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('userData');
+        window.location.href = '/login';
+      }
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
+      updateAuthNavigation();
+      
       const cartId = localStorage.getItem('cartId');
       if (cartId) {
         updateGlobalCartLink(cartId);
@@ -54,4 +90,3 @@
   </script>
 </body>
 </html>
-

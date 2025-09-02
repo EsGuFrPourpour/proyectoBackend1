@@ -7,7 +7,8 @@
     <div class="profile-info">
       <div class="user-avatar">
         <div class="avatar-circle">
-          <span id="userInitials">{{user.first_name.0}}{{user.last_name.0}}</span>
+          <!-- Corregir sintaxis de Handlebars para obtener primeras letras -->
+          <span id="userInitials">{{#if user.first_name}}{{substring user.first_name 0 1}}{{/if}}{{#if user.last_name}}{{substring user.last_name 0 1}}{{/if}}</span>
         </div>
       </div>
       
@@ -24,15 +25,15 @@
     </div>
     
     <div class="profile-actions">
-      <button onclick="showEditForm()" class="btn-edit">Editar Perfil</button>
-      <button onclick="logout()" class="btn-logout">Cerrar Sesión</button>
+      <button data-action="show-edit-form" class="btn-edit">Editar Perfil</button>
+      <button data-action="logout" class="btn-logout">Cerrar Sesión</button>
       {{#if user.cart}}
         <a href="/cart/{{user.cart}}" class="btn-cart">Ver Mi Carrito</a>
       {{/if}}
     </div>
   </div>
   
-   Formulario de edición (oculto inicialmente) 
+  <!-- Formulario de edición (oculto inicialmente) -->
   <div id="editForm" class="edit-form" style="display: none;">
     <h3>Editar Perfil</h3>
     <form id="updateProfileForm">
@@ -61,12 +62,12 @@
       
       <div class="form-actions">
         <button type="submit" class="btn-save">Guardar Cambios</button>
-        <button type="button" onclick="hideEditForm()" class="btn-cancel">Cancelar</button>
+        <button type="button" data-action="hide-edit-form" class="btn-cancel">Cancelar</button>
       </div>
     </form>
   </div>
   
-   Información adicional 
+  <!-- Información adicional -->
   <div class="profile-stats">
     <h3>Información de la Cuenta</h3>
     <div class="stats-grid">
@@ -95,6 +96,29 @@ const authToken = localStorage.getItem('authToken');
 if (!authToken || !userData.id) {
   window.location.href = '/login';
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+  const userInitials = document.getElementById('userInitials');
+  if (userData.first_name && userData.last_name) {
+    userInitials.textContent = userData.first_name.charAt(0).toUpperCase() + userData.last_name.charAt(0).toUpperCase();
+  }
+  
+  // Actualizar otros campos del perfil
+  const userName = document.getElementById('userName');
+  if (userName && userData.first_name && userData.last_name) {
+    userName.textContent = `${userData.first_name} ${userData.last_name}`;
+  }
+});
+
+document.addEventListener('click', function(e) {
+  if (e.target.matches('[data-action="show-edit-form"]')) {
+    showEditForm();
+  } else if (e.target.matches('[data-action="hide-edit-form"]')) {
+    hideEditForm();
+  } else if (e.target.matches('[data-action="logout"]')) {
+    logout();
+  }
+});
 
 function showEditForm() {
   document.getElementById('editForm').style.display = 'block';

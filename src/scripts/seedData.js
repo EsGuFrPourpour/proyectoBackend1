@@ -24,7 +24,7 @@ async function seedData() {
         price: 999,
         stock: 50,
         category: "Electrónica",
-        thumbnails: ["iphone15pro.jpg"],
+        thumbnails: ["/images/no-image.png"],
       },
       {
         title: "Samsung Galaxy S24",
@@ -33,7 +33,7 @@ async function seedData() {
         price: 899,
         stock: 30,
         category: "Electrónica",
-        thumbnails: ["galaxys24.jpg"],
+        thumbnails: ["/images/no-image.png"],
       },
       {
         title: "MacBook Air M3",
@@ -42,7 +42,7 @@ async function seedData() {
         price: 1299,
         stock: 25,
         category: "Computadoras",
-        thumbnails: ["macbookair.jpg"],
+        thumbnails: ["/images/no-image.png"],
       },
       {
         title: "AirPods Pro",
@@ -51,7 +51,7 @@ async function seedData() {
         price: 249,
         stock: 100,
         category: "Accesorios",
-        thumbnails: ["airpodspro.jpg"],
+        thumbnails: ["/images/no-image.png"],
       },
       {
         title: "iPad Pro 12.9",
@@ -60,7 +60,7 @@ async function seedData() {
         price: 1099,
         stock: 40,
         category: "Tablets",
-        thumbnails: ["ipadpro.jpg"],
+        thumbnails: ["/images/no-image.png"],
       },
     ]
 

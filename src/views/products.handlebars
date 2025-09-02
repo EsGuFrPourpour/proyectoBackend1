@@ -39,7 +39,7 @@
       </div>
       
       <button type="submit" class="btn-filter">Aplicar Filtros</button>
-      <button type="button" onclick="clearFilters()" class="btn-clear">Limpiar</button>
+      <button type="button" data-action="clear-filters" class="btn-clear">Limpiar</button>
     </form>
   </div>
 
@@ -53,7 +53,7 @@
           <div class="product-card" data-id="{{this._id}}">
             <div class="product-image">
               {{#if this.thumbnails.length}}
-                <img src="{{this.thumbnails.[0]}}" alt="{{this.title}}" onerror="this.src='/images/no-image.png'">
+                <img src="{{this.thumbnails.[0]}}" alt="{{this.title}}" data-fallback="/images/no-image.png">
               {{else}}
                 <img src="/images/no-image.png" alt="Sin imagen disponible">
               {{/if}}
@@ -74,7 +74,7 @@
             <div class="product-actions">
               <a href="/products/{{this._id}}" class="btn-details">Ver Detalles</a>
               {{#if this.stock}}
-                <button onclick="addToCart('{{this._id}}')" class="btn-add-cart">
+                <button data-action="add-to-cart" data-product-id="{{this._id}}" class="btn-add-cart">
                   Agregar al Carrito
                 </button>
               {{else}}
@@ -110,13 +110,13 @@
     {{else}}
       <div class="no-products">
         <p>No se encontraron productos con los filtros aplicados.</p>
-        <button onclick="clearFilters()" class="btn-clear">Limpiar Filtros</button>
+        <button data-action="clear-filters" class="btn-clear">Limpiar Filtros</button>
       </div>
     {{/if}}
   {{else}}
     <div class="error-message">
       <p>Error al cargar los productos: {{error}}</p>
-      <button onclick="window.location.reload()" class="btn-retry">Reintentar</button>
+      <button data-action="reload-page" class="btn-retry">Reintentar</button>
     </div>
   {{/if}}
 </div>
@@ -141,53 +141,144 @@ document.getElementById('filtersForm').addEventListener('submit', function(e) {
   window.location.href = `/products?${params.toString()}`;
 });
 
+document.addEventListener('click', function(e) {
+  if (e.target.matches('[data-action="clear-filters"]')) {
+    clearFilters();
+  } else if (e.target.matches('[data-action="add-to-cart"]')) {
+    const productId = e.target.dataset.productId;
+    addToCart(productId);
+  } else if (e.target.matches('[data-action="reload-page"]')) {
+    window.location.reload();
+  }
+});
+
+document.addEventListener('error', function(e) {
+  if (e.target.matches('img[data-fallback]')) {
+    e.target.src = e.target.dataset.fallback;
+  }
+}, true);
+
 function clearFilters() {
   window.location.href = '/products';
 }
 
-// Función para agregar al carrito
 async function addToCart(productId) {
   try {
-    console.log('Agregando producto al carrito:', productId);
+    console.log('[v0] Agregando producto al carrito:', productId);
     
-    // Obtener o crear carrito
+    // Verificar que productId sea válido
+    if (!productId || productId === 'undefined' || productId === 'null') {
+      showNotification('Error: ID de producto inválido', 'error');
+      return;
+    }
+    
+    const authToken = localStorage.getItem('authToken');
+    if (!authToken) {
+      showNotification('Debes iniciar sesión para agregar productos al carrito', 'error');
+      setTimeout(() => {
+        window.location.href = '/login';
+      }, 2000);
+      return;
+    }
+    
     let cartId = localStorage.getItem('cartId');
+    console.log('[v0] CartId inicial:', cartId, 'tipo:', typeof cartId);
     
+    // Limpiar cartId si es inválido - más estricto
+    if (!cartId || 
+        cartId === 'undefined' || 
+        cartId === 'null' || 
+        cartId === '[object Object]' ||
+        cartId.trim() === '' ||
+        cartId.startsWith('{') ||
+        cartId.length < 10) { // ObjectId de MongoDB tiene al menos 24 caracteres
+      console.log('[v0] CartId inválido detectado, limpiando localStorage');
+      localStorage.removeItem('cartId');
+      cartId = null;
+    }
+    
+    // Crear carrito si no existe
     if (!cartId) {
+      console.log('[v0] Creando nuevo carrito...');
       const createCartResponse = await fetch('/api/carts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 
+          'Content-Type': 'application/json'
+          // No enviar Authorization header para crear carrito
+        }
       });
       
       if (createCartResponse.ok) {
-        const newCart = await createCartResponse.json();
-        cartId = newCart._id;
+        const newCartData = await createCartResponse.json();
+        cartId = newCartData.payload._id || newCartData.payload.id;
+        
+        if (!cartId || typeof cartId !== 'string' || cartId.length < 10) {
+          throw new Error('El servidor devolvió un ID de carrito inválido');
+        }
+        
         localStorage.setItem('cartId', cartId);
-        console.log('Nuevo carrito creado:', cartId);
+        console.log('[v0] Nuevo carrito creado con ID:', cartId);
       } else {
-        throw new Error('No se pudo crear el carrito');
+        const errorData = await createCartResponse.json();
+        throw new Error(errorData.message || 'No se pudo crear el carrito');
       }
     }
     
-    const response = await fetch(`/api/carts/${cartId}/products/${productId}`, {
+    if (!cartId || 
+        typeof cartId !== 'string' || 
+        cartId === 'undefined' || 
+        cartId === 'null' || 
+        cartId.trim() === '' ||
+        cartId.length < 10) {
+      console.error('[v0] CartId final inválido:', cartId);
+      localStorage.removeItem('cartId');
+      throw new Error('No se pudo obtener un ID de carrito válido');
+    }
+    
+    console.log('[v0] Agregando producto al carrito:', { cartId, productId });
+    
+    const url = `/api/carts/${cartId}/products/${productId}`;
+    console.log('[v0] URL de la petición:', url);
+    
+    const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
+      body: JSON.stringify({ quantity: 1 })
     });
     
     if (response.ok) {
+      const result = await response.json();
       showNotification('Producto añadido al carrito', 'success');
       updateCartLink(cartId);
+      console.log('[v0] Producto agregado exitosamente');
     } else {
       const errorData = await response.json();
-      showNotification(`Error: ${errorData.error}`, 'error');
+      console.log('[v0] Error del servidor:', errorData);
+      showNotification(`Error: ${errorData.message}`, 'error');
     }
   } catch (error) {
-    console.error('Error:', error);
-    showNotification('Error al conectar con el servidor', 'error');
+    console.error('[v0] Error en addToCart:', error);
+    showNotification(`Error: ${error.message}`, 'error');
   }
 }
 
 function updateCartLink(cartId) {
+  if (!cartId || 
+      typeof cartId !== 'string' || 
+      cartId === 'undefined' || 
+      cartId === 'null' || 
+      cartId === '[object Object]' ||
+      cartId.trim() === '' ||
+      cartId.length < 10) {
+    console.log('[v0] CartId inválido para actualizar enlaces:', cartId);
+    return;
+  }
+  
+  console.log('[v0] Actualizando enlaces del carrito con ID:', cartId);
+  
   const cartLinks = document.querySelectorAll('a[href*="/cart/"]');
   cartLinks.forEach(link => {
     link.href = `/cart/${cartId}`;
@@ -205,308 +296,24 @@ function showNotification(message, type = 'info') {
   }
 }
 
-// Cargar cartId del localStorage si existe
 document.addEventListener('DOMContentLoaded', () => {
-  const cartId = localStorage.getItem('cartId');
+  let cartId = localStorage.getItem('cartId');
+  console.log('[v0] CartId al cargar página:', cartId, 'tipo:', typeof cartId);
+  
   if (cartId) {
+    if (cartId === 'undefined' || 
+        cartId === 'null' || 
+        cartId === '[object Object]' ||
+        cartId.trim() === '' ||
+        cartId.startsWith('{') ||
+        cartId.length < 10) {
+      console.log('[v0] Limpiando cartId inválido al cargar');
+      localStorage.removeItem('cartId');
+      return;
+    }
+    
+    // Actualizar enlaces si el cartId es válido
     updateCartLink(cartId);
   }
 });
 </script>
-
-<style>
-.products-container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 20px;
-}
-
-.filters-section {
-  background: #f8f9fa;
-  padding: 20px;
-  border-radius: 8px;
-  margin-bottom: 30px;
-}
-
-.filters-form {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 15px;
-  align-items: end;
-}
-
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.filter-group label {
-  font-weight: bold;
-  color: #495057;
-}
-
-.filter-group input,
-.filter-group select {
-  padding: 8px 12px;
-  border: 1px solid #ced4da;
-  border-radius: 4px;
-  font-size: 14px;
-}
-
-.btn-filter,
-.btn-clear {
-  padding: 10px 20px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.btn-filter {
-  background-color: #007bff;
-  color: white;
-}
-
-.btn-filter:hover {
-  background-color: #0056b3;
-}
-
-.btn-clear {
-  background-color: #6c757d;
-  color: white;
-}
-
-.btn-clear:hover {
-  background-color: #545b62;
-}
-
-.products-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
-  margin-bottom: 30px;
-}
-
-.product-card {
-  background: white;
-  border: 1px solid #dee2e6;
-  border-radius: 8px;
-  overflow: hidden;
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.product-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
-
-.product-image {
-  height: 200px;
-  overflow: hidden;
-}
-
-.product-image img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.no-image {
-  width: 100%;
-  height: 100%;
-  background: #f8f9fa;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #6c757d;
-  border: 2px dashed #dee2e6;
-}
-
-.product-info {
-  padding: 15px;
-}
-
-.product-info h3 {
-  margin: 0 0 10px 0;
-  color: #333;
-  font-size: 1.2rem;
-}
-
-.product-description {
-  color: #666;
-  font-size: 0.9rem;
-  margin-bottom: 10px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.product-details {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 15px;
-}
-
-.price {
-  font-size: 1.3rem;
-  font-weight: bold;
-  color: #28a745;
-}
-
-.category {
-  background: #e9ecef;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 0.8rem;
-  color: #495057;
-}
-
-.stock.in-stock {
-  color: #28a745;
-  font-size: 0.9rem;
-}
-
-.stock.out-of-stock {
-  color: #dc3545;
-  font-size: 0.9rem;
-}
-
-.product-actions {
-  padding: 0 15px 15px;
-  display: flex;
-  gap: 10px;
-}
-
-.btn-details {
-  flex: 1;
-  background-color: #17a2b8;
-  color: white;
-  text-decoration: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  text-align: center;
-  font-size: 0.9rem;
-}
-
-.btn-details:hover {
-  background-color: #138496;
-}
-
-.btn-add-cart {
-  flex: 1;
-  background-color: #28a745;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
-
-.btn-add-cart:hover {
-  background-color: #218838;
-}
-
-.btn-out-of-stock {
-  flex: 1;
-  background-color: #6c757d;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: not-allowed;
-  font-size: 0.9rem;
-}
-
-.pagination {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 0;
-  border-top: 1px solid #dee2e6;
-}
-
-.pagination-controls {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-
-.btn-page {
-  padding: 8px 16px;
-  background-color: #007bff;
-  color: white;
-  text-decoration: none;
-  border-radius: 4px;
-}
-
-.btn-page:hover {
-  background-color: #0056b3;
-}
-
-.btn-page.disabled {
-  background-color: #6c757d;
-  cursor: not-allowed;
-}
-
-.current-page {
-  font-weight: bold;
-  padding: 8px 16px;
-  background-color: #e9ecef;
-  border-radius: 4px;
-}
-
-.no-products,
-.error-message {
-  text-align: center;
-  padding: 40px;
-  background: #f8f9fa;
-  border-radius: 8px;
-}
-
-.btn-retry {
-  background-color: #dc3545;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 4px;
-  cursor: pointer;
-  margin-top: 10px;
-}
-
-.notification {
-  padding: 10px 15px;
-  border-radius: 4px;
-  margin-bottom: 15px;
-}
-
-.notification.success {
-  background-color: #d4edda;
-  color: #155724;
-  border: 1px solid #c3e6cb;
-}
-
-.notification.error {
-  background-color: #f8d7da;
-  color: #721c24;
-  border: 1px solid #f5c6cb;
-}
-
-@media (max-width: 768px) {
-  .filters-form {
-    grid-template-columns: 1fr;
-  }
-  
-  .products-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .pagination {
-    flex-direction: column;
-    gap: 15px;
-  }
-}
-</style>

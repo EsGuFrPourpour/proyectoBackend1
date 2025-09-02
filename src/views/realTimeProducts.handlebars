@@ -56,8 +56,8 @@
             <p><strong>Código:</strong> {{this.code}}</p>
           </div>
           <div class="product-actions">
-            <button onclick="addToCart('{{this._id}}')" class="btn-cart">Agregar al Carrito</button>
-            <button onclick="deleteProduct('{{this._id}}')" class="btn-delete">Eliminar</button>
+            <button data-action="add-to-cart" data-product-id="{{this._id}}" class="btn-cart">Agregar al Carrito</button>
+            <button data-action="delete-product" data-product-id="{{this._id}}" class="btn-delete">Eliminar</button>
           </div>
         </li>
       {{/each}}
@@ -155,3 +155,161 @@
   min-height: 20px;
 }
 </style>
+
+<script>
+// Conectar a Socket.IO
+const socket = io();
+
+// Escuchar eventos del servidor
+socket.on('product_added', function(product) {
+  addProductToList(product);
+  showNotification('Nuevo producto agregado', 'success');
+});
+
+socket.on('product_deleted', function(data) {
+  const productElement = document.querySelector(`[data-id="${data.pid}"]`);
+  if (productElement) {
+    productElement.remove();
+  }
+  showNotification('Producto eliminado', 'success');
+});
+
+socket.on('product_created_success', function(product) {
+  showNotification('Producto creado exitosamente', 'success');
+  document.getElementById('productForm').reset();
+});
+
+socket.on('product_created_error', function(data) {
+  showNotification(`Error: ${data.error}`, 'error');
+});
+
+socket.on('product_deleted_success', function(data) {
+  showNotification('Producto eliminado exitosamente', 'success');
+});
+
+socket.on('product_deleted_error', function(data) {
+  showNotification(`Error: ${data.error}`, 'error');
+});
+
+document.addEventListener('click', function(e) {
+  if (e.target.matches('[data-action="add-to-cart"]')) {
+    const productId = e.target.dataset.productId;
+    addToCart(productId);
+  } else if (e.target.matches('[data-action="delete-product"]')) {
+    const productId = e.target.dataset.productId;
+    deleteProduct(productId);
+  }
+});
+
+// Manejar envío del formulario
+document.getElementById('productForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  
+  const formData = new FormData(e.target);
+  const productData = {
+    title: formData.get('title'),
+    description: formData.get('description'),
+    code: formData.get('code'),
+    price: parseFloat(formData.get('price')),
+    stock: parseInt(formData.get('stock')),
+    category: formData.get('category')
+  };
+  
+  // Enviar por WebSocket
+  socket.emit('create_product', productData);
+});
+
+async function addToCart(productId) {
+  try {
+    // Obtener o crear carrito
+    let cartId = localStorage.getItem('cartId');
+    
+    if (!cartId) {
+      const createCartResponse = await fetch('/api/carts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (createCartResponse.ok) {
+        const newCart = await createCartResponse.json();
+        cartId = newCart._id;
+        localStorage.setItem('cartId', cartId);
+      } else {
+        throw new Error('No se pudo crear el carrito');
+      }
+    }
+    
+    const response = await fetch(`/api/carts/${cartId}/products/${productId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    if (response.ok) {
+      showNotification('Producto añadido al carrito', 'success');
+    } else {
+      const errorData = await response.json();
+      showNotification(`Error: ${errorData.error}`, 'error');
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    showNotification('Error al conectar con el servidor', 'error');
+  }
+}
+
+async function deleteProduct(productId) {
+  if (confirm('¿Estás seguro de que quieres eliminar este producto?')) {
+    try {
+      if (!productId || productId.trim() === '') {
+        showNotification('Error: ID de producto inválido', 'error');
+        return;
+      }
+      
+      console.log('Enviando delete_product con ID:', productId);
+      
+      socket.emit('delete_product', productId);
+      
+    } catch (error) {
+      console.error('Error:', error);
+      showNotification('Error al conectar con el servidor', 'error');
+    }
+  }
+}
+
+function addProductToList(product) {
+  const productsList = document.getElementById('products-list');
+  if (!productsList) return;
+  
+  const li = document.createElement('li');
+  li.setAttribute('data-id', product._id);
+  li.className = 'product-item';
+  
+  li.innerHTML = `
+    <div class="product-info">
+      <h4>${product.title}</h4>
+      <p>${product.description}</p>
+      <p><strong>Precio:</strong> $${product.price}</p>
+      <p><strong>Stock:</strong> ${product.stock}</p>
+      <p><strong>Categoría:</strong> ${product.category}</p>
+      <p><strong>Código:</strong> ${product.code}</p>
+    </div>
+    <div class="product-actions">
+      <button data-action="add-to-cart" data-product-id="${product._id}" class="btn-cart">Agregar al Carrito</button>
+      <button data-action="delete-product" data-product-id="${product._id}" class="btn-delete">Eliminar</button>
+    </div>
+  `;
+  
+  productsList.appendChild(li);
+}
+
+function showNotification(message, type = 'info') {
+  const notificationsDiv = document.getElementById('notifications');
+  if (notificationsDiv) {
+    notificationsDiv.innerHTML = `<div class="notification ${type}">${message}</div>`;
+    
+    setTimeout(() => {
+      notificationsDiv.innerHTML = '';
+    }, 3000);
+  }
+}
+</script>
+

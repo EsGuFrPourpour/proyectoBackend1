@@ -3,7 +3,7 @@
     <div class="product-images">
       {{#if product.thumbnails.length}}
         {{#each product.thumbnails}}
-          <img src="{{this}}" alt="{{../product.title}}" class="product-image" onerror="this.src='/images/no-image.png'">
+          <img src="{{this}}" alt="{{../product.title}}" class="product-image" data-fallback="/images/no-image.png">
         {{/each}}
       {{else}}
         <img src="/images/no-image.png" alt="Sin imagen disponible" class="product-image">
@@ -53,7 +53,8 @@
           </div>
           
           <button 
-            onclick="addToCartWithQuantity('{{product._id}}')" 
+            data-action="add-to-cart-with-quantity" 
+            data-product-id="{{product._id}}" 
             class="btn-add-to-cart">
             Agregar al Carrito
           </button>
@@ -72,57 +73,68 @@
 </div>
 
 <script>
+document.addEventListener('click', function(e) {
+  if (e.target.matches('[data-action="add-to-cart-with-quantity"]')) {
+    const productId = e.target.dataset.productId;
+    addToCartWithQuantity(productId);
+  }
+});
+
+document.addEventListener('error', function(e) {
+  if (e.target.matches('img[data-fallback]')) {
+    e.target.src = e.target.dataset.fallback;
+  }
+}, true);
+
 async function addToCartWithQuantity(productId) {
   try {
     const quantity = parseInt(document.getElementById('quantity').value) || 1;
     
-    // Obtener o crear carrito
-    let cartId = localStorage.getItem('cartId');
+    const authToken = localStorage.getItem('authToken');
     
-    if (!cartId) {
-      const createCartResponse = await fetch('/api/carts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      
-      if (createCartResponse.ok) {
-        const newCart = await createCartResponse.json();
-        cartId = newCart._id;
-        localStorage.setItem('cartId', cartId);
-      } else {
-        throw new Error('No se pudo crear el carrito');
-      }
+    if (!authToken) {
+      showNotification('Debes iniciar sesión para agregar productos al carrito', 'error');
+      setTimeout(() => {
+        window.location.href = '/login';
+      }, 2000);
+      return;
     }
     
-    // Agregar productos según la cantidad seleccionada
+    console.log('[v0] Agregando producto al carrito. ProductId:', productId, 'Quantity:', quantity);
+    
     for (let i = 0; i < quantity; i++) {
-      const response = await fetch(`/api/carts/${cartId}/products/${productId}`, {
+      const response = await fetch(`/api/carts/my-cart/products/${productId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        }
       });
       
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Error al agregar producto');
+        console.error('[v0] Error al agregar producto:', errorData);
+        
+        if (response.status === 401) {
+          showNotification('Sesión expirada. Por favor, inicia sesión nuevamente.', 'error');
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('userData');
+          setTimeout(() => {
+            window.location.href = '/login';
+          }, 2000);
+          return;
+        }
+        
+        throw new Error(errorData.message || errorData.error || 'Error al agregar producto');
       }
     }
     
     showNotification(`${quantity} producto(s) agregado(s) al carrito`, 'success');
     
-    // Actualizar enlaces del carrito
-    updateCartLinks(cartId);
-    
   } catch (error) {
-    console.error('Error:', error);
+    console.error('[v0] Error en addToCartWithQuantity:', error);
     showNotification(error.message, 'error');
   }
-}
-
-function updateCartLinks(cartId) {
-  const cartLinks = document.querySelectorAll('a[href*="/cart/"]');
-  cartLinks.forEach(link => {
-    link.href = `/cart/${cartId}`;
-  });
 }
 
 function showNotification(message, type = 'info') {

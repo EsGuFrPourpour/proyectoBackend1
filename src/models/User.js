@@ -37,14 +37,25 @@ const userSchema = new mongoose.Schema(
       enum: ["user", "admin"],
       default: "user",
     },
+    resetPasswordToken: {
+      type: String,
+      default: undefined,
+    },
+    resetPasswordExpires: {
+      type: Date,
+      default: undefined,
+    },
   },
   {
     timestamps: true,
     versionKey: false,
-  }
+  },
 )
 
 // Índice para email único
 userSchema.index({ email: 1 }, { unique: true })
+
+userSchema.index({ resetPasswordToken: 1 })
+userSchema.index({ resetPasswordExpires: 1 })
 
 module.exports = mongoose.model("User", userSchema)

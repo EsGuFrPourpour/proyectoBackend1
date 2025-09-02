@@ -1,59 +1,104 @@
 // Variables globales
 let mainSocket = null
 
+window.updateCartCounter = updateCartCounter
+
 // Función para agregar al carrito (HTTP)
 async function addToCart(productId) {
   try {
     console.log("Agregando producto al carrito:", productId)
 
-    // Primero obtener o crear un carrito
-    let cartId = localStorage.getItem("cartId")
-
-    if (!cartId) {
-      // Crear un nuevo carrito
-      const createCartResponse = await fetch("/api/carts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      })
-
-      if (createCartResponse.ok) {
-        const newCart = await createCartResponse.json()
-        cartId = newCart._id
-        localStorage.setItem("cartId", cartId)
-        console.log("Nuevo carrito creado:", cartId)
-      } else {
-        throw new Error("No se pudo crear el carrito")
-      }
+    const authToken = localStorage.getItem("authToken")
+    if (!authToken) {
+      showNotification("Debes iniciar sesión para agregar productos al carrito", "error")
+      window.location.href = "/login"
+      return
     }
 
-    const response = await fetch(`/api/carts/${cartId}/product/${productId}`, {
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${authToken}`,
+    }
+
+    const response = await fetch(`/api/carts/my-cart/products/${productId}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: headers,
     })
 
     console.log("Respuesta del servidor:", response.status)
 
     if (response.ok) {
       showNotification("Producto añadido al carrito", "success")
-      // Actualizar el enlace del carrito en la navegación
-      updateCartLink(cartId)
+      updateCartLink()
+      updateCartCounter()
     } else {
-      const errorData = await response.json()
-      console.error("Error del servidor:", errorData)
-      showNotification("Error al añadir el producto", "error")
+      let errorMessage = "Error al añadir el producto"
+      try {
+        const errorData = await response.json()
+        console.error("Error del servidor:", errorData)
+
+        if (errorData && typeof errorData === "object") {
+          if (errorData.message) {
+            errorMessage = errorData.message
+          } else if (errorData.error) {
+            errorMessage = errorData.error
+          } else if (errorData.status === "error" && errorData.message) {
+            errorMessage = errorData.message
+          } else {
+            errorMessage = `Error del servidor: ${JSON.stringify(errorData)}`
+          }
+        } else if (typeof errorData === "string") {
+          errorMessage = errorData
+        } else {
+          errorMessage = `Error del servidor (${response.status}): ${response.statusText}`
+        }
+      } catch (parseError) {
+        console.error("Error al parsear respuesta del servidor:", parseError)
+        try {
+          const errorText = await response.text()
+          console.error("Respuesta del servidor (texto):", errorText)
+          errorMessage = errorText || `Error del servidor (${response.status}): ${response.statusText}`
+        } catch (textError) {
+          console.error("Error al obtener texto de respuesta:", textError)
+          errorMessage = `Error del servidor (${response.status}): ${response.statusText}`
+        }
+      }
+
+      showNotification(errorMessage, "error")
     }
   } catch (error) {
     console.error("Error:", error)
-    showNotification("Error al conectar con el servidor", "error")
+    let errorMessage = "Error al conectar con el servidor"
+    if (error.message) {
+      errorMessage = error.message
+    }
+    showNotification(errorMessage, "error")
   }
 }
 
-// Función para actualizar el enlace del carrito
-function updateCartLink(cartId) {
-  const cartLinks = document.querySelectorAll('a[href*="/cart/"]')
+function updateCartLink() {
+  const cartLinks = document.querySelectorAll('a[href*="/cart/"], a[data-action="go-to-cart"]')
   cartLinks.forEach((link) => {
-    link.href = `/cart/${cartId}`
+    if (link.hasAttribute("data-action")) {
+      // Para enlaces con data-action, actualizar el onclick
+      link.onclick = () => goToCart()
+    } else {
+      // Para enlaces normales, actualizar href
+      link.href = `/cart/my-cart`
+    }
   })
+  console.log("[v0] Enlaces del carrito actualizados para usar carrito único")
+}
+
+function goToCart() {
+  const authToken = localStorage.getItem("authToken")
+  if (!authToken) {
+    showNotification("Debes iniciar sesión para acceder al carrito", "error")
+    window.location.href = "/login"
+    return
+  }
+
+  window.location.href = `/cart/my-cart`
 }
 
 // Función para eliminar producto (WebSocket)
@@ -78,6 +123,51 @@ function showNotification(message, type = "info") {
   }
 }
 
+// Función para actualizar contador del carrito
+async function updateCartCounter() {
+  try {
+    const authToken = localStorage.getItem("authToken")
+    if (!authToken) {
+      const cartCounter = document.getElementById("cart-counter")
+      if (cartCounter) {
+        cartCounter.style.display = "none"
+      }
+      return
+    }
+
+    const response = await fetch("/api/carts/my-cart", {
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      const cart = data.payload
+      const cartCounter = document.getElementById("cart-counter")
+
+      if (cartCounter && cart && cart.products) {
+        // Calcular total de productos (sumando cantidades)
+        const totalItems = cart.products.reduce((total, item) => total + (item.quantity || 1), 0)
+        cartCounter.textContent = totalItems
+        cartCounter.style.display = totalItems > 0 ? "inline-flex" : "none"
+
+        // Animar el contador cuando se actualiza
+        if (totalItems > 0) {
+          cartCounter.style.animation = "none"
+          setTimeout(() => {
+            cartCounter.style.animation = "pulse 0.3s ease"
+          }, 10)
+        }
+
+        console.log("[v0] Contador del carrito actualizado:", totalItems)
+      }
+    }
+  } catch (error) {
+    console.error("Error al actualizar contador del carrito:", error)
+  }
+}
+
 // Solo inicializar Socket.IO si NO estamos en la página del carrito
 document.addEventListener("DOMContentLoaded", () => {
   console.log("DOM cargado")
@@ -86,17 +176,23 @@ document.addEventListener("DOMContentLoaded", () => {
   const isCartPage = window.location.pathname.includes("/cart/")
   console.log("¿Es página del carrito?", isCartPage)
 
-  // Cargar cartId del localStorage si existe
-  const cartId = localStorage.getItem("cartId")
-  if (cartId) {
-    updateCartLink(cartId)
-  }
+  updateCartLink()
+  updateCartCounter()
 
   if (!isCartPage && window.io) {
     console.log("Inicializando Socket.IO para páginas principales")
 
-    // Conectar a Socket.IO
-    mainSocket = window.io()
+    const authToken = localStorage.getItem("authToken")
+    const socketOptions = {}
+
+    if (authToken) {
+      socketOptions.auth = {
+        token: authToken,
+      }
+    }
+
+    // Conectar a Socket.IO con autenticación
+    mainSocket = window.io(socketOptions)
 
     mainSocket.on("connect", () => {
       console.log("Conectado a Socket.IO")
@@ -165,6 +261,7 @@ document.addEventListener("DOMContentLoaded", () => {
     mainSocket.on("product_added_to_cart", (data) => {
       console.log("Producto añadido al carrito:", data)
       showNotification(`Producto ${data.productId} añadido al carrito ${data.cartId}`, "success")
+      updateCartCounter()
     })
 
     // Eventos de confirmación WebSocket
@@ -176,7 +273,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
     mainSocket.on("product_created_error", (data) => {
       console.error("Error al crear producto:", data)
-      showNotification(`Error al crear producto: ${data.error}`, "error")
+
+      let errorMessage = "Error al crear producto"
+      if (data && typeof data === "object") {
+        if (data.error) {
+          errorMessage = data.error
+        } else if (data.message) {
+          errorMessage = data.message
+        } else {
+          errorMessage = `Error al crear producto: ${JSON.stringify(data)}`
+        }
+      } else if (typeof data === "string") {
+        errorMessage = data
+      }
+
+      showNotification(errorMessage, "error")
     })
 
     mainSocket.on("product_deleted_success", (data) => {
@@ -186,7 +297,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
     mainSocket.on("product_deleted_error", (data) => {
       console.error("Error al eliminar producto:", data)
-      showNotification(`Error al eliminar producto: ${data.error}`, "error")
+
+      let errorMessage = "Error al eliminar producto"
+      if (data && typeof data === "object") {
+        if (data.error) {
+          errorMessage = data.error
+        } else if (data.message) {
+          errorMessage = data.message
+        } else {
+          errorMessage = `Error al eliminar producto: ${JSON.stringify(data)}`
+        }
+      } else if (typeof data === "string") {
+        errorMessage = data
+      }
+
+      showNotification(errorMessage, "error")
     })
 
     mainSocket.on("disconnect", () => {

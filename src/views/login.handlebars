@@ -18,16 +18,35 @@
       <button type="submit" class="btn-auth">Iniciar Sesión</button>
     </form>
     
+    <!-- Convirtiendo texto visible en comentario HTML -->
+    <!-- Agregando enlace para recuperar contraseña -->
     <div class="auth-links">
       <p>¿No tienes cuenta? <a href="/register">Regístrate aquí</a></p>
+      <p><a href="#" id="forgot-password-link">¿Olvidaste tu contraseña?</a></p>
       <p><a href="/products">Continuar sin cuenta</a></p>
+    </div>
+    
+    <!-- Convirtiendo texto visible en comentario HTML -->
+    <!-- Agregando modal para recuperar contraseña -->
+    <div id="forgot-password-modal" class="modal" style="display: none;">
+      <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3>Recuperar Contraseña</h3>
+        <form id="forgot-password-form">
+          <div class="form-group">
+            <label for="forgot-email">Ingresa tu email:</label>
+            <input type="email" id="forgot-email" name="email" required>
+          </div>
+          <button type="submit" class="btn-auth">Enviar enlace de recuperación</button>
+        </form>
+      </div>
     </div>
     
     <div class="demo-accounts">
       <h4>Cuentas de prueba:</h4>
       <div class="demo-buttons">
-        <button onclick="fillDemoAdmin()" class="btn-demo admin">Admin Demo</button>
-        <button onclick="fillDemoUser()" class="btn-demo user">Usuario Demo</button>
+        <button data-action="fill-demo-admin" class="btn-demo admin">Admin Demo</button>
+        <button data-action="fill-demo-user" class="btn-demo user">Usuario Demo</button>
       </div>
     </div>
   </div>
@@ -83,6 +102,54 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
   } catch (error) {
     console.error('Error:', error);
     showNotification('Error al conectar con el servidor', 'error');
+  }
+});
+
+document.getElementById('forgot-password-link').addEventListener('click', function(e) {
+  e.preventDefault();
+  document.getElementById('forgot-password-modal').style.display = 'block';
+});
+
+document.querySelector('.close').addEventListener('click', function() {
+  document.getElementById('forgot-password-modal').style.display = 'none';
+});
+
+document.getElementById('forgot-password-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  
+  const email = document.getElementById('forgot-email').value;
+  
+  try {
+    showNotification('Enviando enlace de recuperación...', 'info');
+    
+    const response = await fetch('/api/password/forgot', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ email })
+    });
+    
+    const result = await response.json();
+    
+    if (response.ok) {
+      showNotification('Enlace de recuperación enviado. Revisa tu email.', 'success');
+      document.getElementById('forgot-password-modal').style.display = 'none';
+      document.getElementById('forgot-password-form').reset();
+    } else {
+      showNotification(result.error || 'Error al enviar enlace', 'error');
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    showNotification('Error al conectar con el servidor', 'error');
+  }
+});
+
+document.addEventListener('click', function(e) {
+  if (e.target.matches('[data-action="fill-demo-admin"]')) {
+    fillDemoAdmin();
+  } else if (e.target.matches('[data-action="fill-demo-user"]')) {
+    fillDemoUser();
   }
 });
 
@@ -265,5 +332,46 @@ function showNotification(message, type = 'info') {
   background-color: #d1ecf1;
   color: #0c5460;
   border: 1px solid #bee5eb;
+}
+
+/* Estilos para el modal de recuperar contraseña */
+.modal {
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.5);
+}
+
+.modal-content {
+  background-color: white;
+  margin: 15% auto;
+  padding: 30px;
+  border-radius: 10px;
+  width: 90%;
+  max-width: 400px;
+  position: relative;
+}
+
+.close {
+  position: absolute;
+  right: 15px;
+  top: 15px;
+  color: #aaa;
+  font-size: 28px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.close:hover {
+  color: #000;
+}
+
+.modal-content h3 {
+  text-align: center;
+  margin-bottom: 20px;
+  color: #333;
 }
 </style>

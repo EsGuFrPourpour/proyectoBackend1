@@ -1,187 +1,373 @@
 const express = require("express")
-const productManager = require("../managers/ProductManager")
-const cartManager = require("../managers/CartManager")
-
 const router = express.Router()
+const ProductRepository = require("../repositories/ProductRepository")
+const CartRepository = require("../repositories/CartRepository")
+const TicketDAO = require("../dao/TicketDAO")
+const { asyncHandler } = require("../utils/asyncHandler")
+const logger = require("../utils/logger")
+const mongoose = require("mongoose")
+const { authenticateJWT, requireAdmin, authenticateWeb, requireAdminWeb } = require("../middleware/auth")
 
-// Ruta principal - redirigir a productos
-router.get("/", (req, res) => {
-  res.redirect("/products")
-})
+const productRepository = ProductRepository
+const cartRepository = CartRepository
 
-// 🆕 Ruta para productos con paginación y filtros
-router.get("/products", async (req, res) => {
-  try {
-    console.log("=== CARGANDO VISTA DE PRODUCTOS CON FILTROS ===")
-    console.log("Query params:", req.query)
+// GET / - Página principal
+router.get(
+  "/",
+  asyncHandler(async (req, res) => {
+    const products = await productRepository.getAllProducts({}, { limit: 6 })
+
+    res.render("home", {
+      title: "E-commerce - Inicio",
+      products: products.products,
+      style: "styles.css",
+    })
+  }),
+)
+
+// GET /products - Catálogo de productos
+router.get(
+  "/products",
+  asyncHandler(async (req, res) => {
+    console.log("[v0] Starting products route")
+    const { limit = 10, page = 1, sort, query, category } = req.query
+    console.log("[v0] Query params:", { limit, page, sort, query, category })
+
+    const filter = {}
+    if (query) filter.title = new RegExp(query, "i")
+    if (category) filter.category = category
+    console.log("[v0] Filter applied:", filter)
 
     const options = {
-      limit: req.query.limit || 10,
-      page: req.query.page || 1,
-      sort: req.query.sort,
-      query: req.query.query,
-      category: req.query.category,
-      status: req.query.status !== undefined ? req.query.status === "true" : undefined,
+      limit: Number.parseInt(limit),
+      skip: (Number.parseInt(page) - 1) * Number.parseInt(limit),
+      sort: sort === "asc" ? { price: 1 } : sort === "desc" ? { price: -1 } : {},
     }
+    console.log("[v0] Options applied:", options)
 
-    const result = await productManager.getProducts(options)
-    console.log("Resultado de productos:", result.status, result.payload?.length || 0)
+    try {
+      console.log("[v0] Calling productRepository.getAllProducts...")
+      const result = await productRepository.getAllProducts(filter, options)
+      console.log("[v0] Products result:", {
+        productsCount: result.products.length,
+        total: result.total,
+        hasNextPage: result.hasNextPage,
+      })
 
-    // Pasar todos los datos necesarios a la vista
-    res.render("products", {
-      ...result,
-      query: req.query.query || "",
-      category: req.query.category || "",
-      sort: req.query.sort || "",
-      limit: req.query.limit || "10",
-    })
-  } catch (error) {
-    console.error("Error loading products:", error)
-    res.render("products", {
-      status: "error",
-      error: "Error al cargar los productos",
-      payload: [],
-      totalPages: 0,
-      page: 1,
-      hasPrevPage: false,
-      hasNextPage: false,
-      prevLink: null,
-      nextLink: null,
-    })
-  }
-})
+      console.log("[v0] ==========================================")
+      console.log("[v0] ANÁLISIS DETALLADO DEL STOCK")
+      console.log("[v0] ==========================================")
 
-// 🆕 Ruta para detalle de producto individual
-router.get("/products/:pid", async (req, res) => {
-  try {
-    console.log("=== CARGANDO DETALLE DE PRODUCTO ===")
-    console.log("Product ID:", req.params.pid)
+      let productsWithStock = 0
+      let productsWithoutStock = 0
 
-    // Validar que el ID sea un ObjectId válido
-    const mongoose = require("mongoose")
-    if (!mongoose.Types.ObjectId.isValid(req.params.pid)) {
-      console.log("ID de producto inválido")
-      return res.status(400).send("ID de producto inválido")
+      result.products.forEach((product, index) => {
+        const hasStock = product.stock && product.stock > 0
+        if (hasStock) productsWithStock++
+        else productsWithoutStock++
+
+        console.log(`[v0] Producto ${index + 1}: ${product.title}`)
+        console.log(`[v0]   - ID: ${product._id}`)
+        console.log(`[v0]   - Stock RAW: ${JSON.stringify(product.stock)}`)
+        console.log(`[v0]   - Stock valor: ${product.stock}`)
+        console.log(`[v0]   - Stock tipo: ${typeof product.stock}`)
+        console.log(`[v0]   - Stock === 0: ${product.stock === 0}`)
+        console.log(`[v0]   - Stock > 0: ${product.stock > 0}`)
+        console.log(`[v0]   - Stock truthy: ${!!product.stock}`)
+        console.log(`[v0]   - Handlebars evaluará como: ${hasStock ? "CON STOCK" : "SIN STOCK"}`)
+        console.log(`[v0]   - Precio: $${product.price}`)
+        console.log(`[v0]   - Categoría: ${product.category}`)
+        console.log(`[v0]   - Título: "${product.title}"`)
+        console.log(`[v0]   - Descripción: "${product.description}"`)
+        console.log(`[v0]   - Thumbnails: ${JSON.stringify(product.thumbnails)}`)
+        console.log(`[v0]   - Thumbnails length: ${product.thumbnails ? product.thumbnails.length : "undefined"}`)
+        console.log(`[v0]   - Todos los campos: ${JSON.stringify(product, null, 2)}`)
+        console.log("[v0]   " + "=".repeat(50))
+      })
+
+      console.log(`[v0] RESUMEN FINAL:`)
+      console.log(`[v0] - Productos CON stock: ${productsWithStock}`)
+      console.log(`[v0] - Productos SIN stock: ${productsWithoutStock}`)
+      console.log(`[v0] - Total productos: ${result.products.length}`)
+      console.log("[v0] ==========================================")
+
+      console.log("[v0] Getting categories...")
+      const allProducts = await productRepository.getAllProducts({}, { limit: 1000 })
+      const categories = [...new Set(allProducts.products.map((p) => p.category))]
+      console.log("[v0] Categories found:", categories)
+
+      logger.info(`Products page viewed: ${result.products.length} products displayed`)
+
+      const currentPage = Number.parseInt(page)
+      const totalPages = Math.ceil(result.total / Number.parseInt(limit))
+      const hasPrevPage = currentPage > 1
+      const hasNextPage = result.hasNextPage
+
+      // Construir URLs de paginación
+      const baseUrl = "/products"
+      const queryParams = new URLSearchParams()
+      if (query) queryParams.set("query", query)
+      if (category) queryParams.set("category", category)
+      if (sort) queryParams.set("sort", sort)
+      queryParams.set("limit", limit)
+
+      let prevLink = null
+      let nextLink = null
+
+      if (hasPrevPage) {
+        queryParams.set("page", currentPage - 1)
+        prevLink = `${baseUrl}?${queryParams.toString()}`
+      }
+
+      if (hasNextPage) {
+        queryParams.set("page", currentPage + 1)
+        nextLink = `${baseUrl}?${queryParams.toString()}`
+      }
+
+      console.log("[v0] Rendering products view...")
+      res.render("products", {
+        title: "Catálogo de Productos",
+        status: "success", // Agregar status success para que la vista muestre los productos
+        payload: result.products, // Usar 'payload' en lugar de 'products' como espera la vista
+        categories,
+        page: currentPage,
+        totalPages,
+        hasPrevPage,
+        hasNextPage,
+        prevLink,
+        nextLink,
+        query,
+        category,
+        sort,
+        limit,
+        style: "styles.css",
+      })
+      console.log("[v0] Products view rendered successfully")
+    } catch (error) {
+      console.log("[v0] Error in products route:", error)
+      logger.error("Error loading products:", error)
+      res.status(500).render("products", {
+        title: "Catálogo de Productos",
+        status: "error",
+        error: error.message || "Error al cargar los productos",
+        style: "styles.css",
+      })
     }
+  }),
+)
 
-    const product = await productManager.getProductById(req.params.pid)
+// GET /products/:pid - Detalle de producto
+router.get(
+  "/products/:pid",
+  asyncHandler(async (req, res) => {
+    const { pid } = req.params
+    const product = await productRepository.getProductById(pid)
 
     if (!product) {
-      console.log("Producto no encontrado")
-      return res.status(404).send("Producto no encontrado")
+      return res.status(404).render("error", {
+        title: "Producto no encontrado",
+        message: "El producto que buscas no existe",
+        style: "styles.css",
+      })
     }
 
-    console.log("Producto encontrado:", product.title)
-    res.render("product-detail", { product })
-  } catch (error) {
-    console.error("Error loading product detail:", error)
-    res.status(500).send("Error al cargar el detalle del producto")
-  }
-})
+    logger.info(`Product detail viewed: ${product.title}`)
 
-// Ruta para productos en tiempo real
-router.get("/realtimeproducts", async (req, res) => {
-  try {
-    console.log("Accediendo a /realtimeproducts")
-    const result = await productManager.getProducts({ limit: 50 })
-    console.log("Productos cargados:", result.payload?.length || 0)
-    res.render("realTimeProducts", { products: result.payload || [] })
-  } catch (error) {
-    console.error("Error loading real-time products:", error)
-    res.status(500).send("Error al cargar los productos en tiempo real")
-  }
-})
-
-// Ruta para vista del carrito
-router.get("/cart/:cid", async (req, res) => {
-  try {
-    console.log("=== CARGANDO VISTA DEL CARRITO ===")
-    console.log("Carrito ID:", req.params.cid)
-
-    // Validar que el ID sea un ObjectId válido
-    const mongoose = require("mongoose")
-    if (!mongoose.Types.ObjectId.isValid(req.params.cid)) {
-      console.log("ID de carrito inválido")
-      return res.status(400).send("ID de carrito inválido")
-    }
-
-    const cartWithDetails = await cartManager.getCartWithDetails(req.params.cid)
-
-    if (!cartWithDetails) {
-      console.log("Carrito no encontrado")
-      return res.status(404).send("Carrito no encontrado")
-    }
-
-    console.log("Carrito encontrado con detalles:", {
-      id: cartWithDetails.id,
-      totalItems: cartWithDetails.totalItems,
-      totalPrice: cartWithDetails.totalPrice,
-      productsCount: cartWithDetails.products.length,
+    res.render("product-detail", {
+      title: product.title,
+      product,
+      style: "styles.css",
     })
+  }),
+)
 
-    res.render("cart", {
-      products: cartWithDetails.products,
-      cartId: req.params.cid,
-      total: cartWithDetails.totalPrice,
-      totalItems: cartWithDetails.totalItems,
+// GET /cart/my-cart - Vista del carrito del usuario autenticado
+router.get(
+  "/cart/my-cart",
+  asyncHandler(async (req, res) => {
+    try {
+      console.log("[v0] Accediendo a /cart/my-cart")
+
+      res.render("cart", {
+        title: "Mi Carrito",
+        cart: null, // Se cargará dinámicamente desde el frontend
+        total: "0.00",
+        style: "styles.css",
+        isMyCart: true,
+      })
+    } catch (error) {
+      console.log("[v0] Error en ruta /cart/my-cart:", error)
+      logger.error(`Error loading cart page:`, error)
+      return res.redirect("/products?message=cart_error")
+    }
+  }),
+)
+
+// GET /cart/:cid - Vista del carrito
+router.get(
+  "/cart/:cid",
+  asyncHandler(async (req, res) => {
+    const { cid } = req.params
+
+    if (cid === "my-cart") {
+      return res.redirect("/cart/my-cart")
+    }
+
+    if (
+      !cid ||
+      cid === "undefined" ||
+      cid === "null" ||
+      cid === "[object Object]" ||
+      cid.length < 24 ||
+      !mongoose.Types.ObjectId.isValid(cid)
+    ) {
+      logger.warn(`Invalid cart ID attempted: ${cid}`)
+
+      // En lugar de mostrar error, redirigir a productos con mensaje
+      return res.redirect("/products?message=cart_invalid")
+    }
+
+    try {
+      const cart = await cartRepository.getCartById(cid)
+
+      if (!cart) {
+        logger.warn(`Cart not found: ${cid}`)
+        return res.redirect("/products?message=cart_not_found")
+      }
+
+      const total = cart.products.reduce((sum, item) => {
+        return sum + item.product.price * item.quantity
+      }, 0)
+
+      logger.info(`Cart viewed: ${cid}`)
+
+      res.render("cart", {
+        title: "Mi Carrito",
+        cart,
+        total: total.toFixed(2),
+        style: "styles.css",
+      })
+    } catch (error) {
+      logger.error(`Error loading cart ${cid}:`, error)
+      return res.redirect("/products?message=cart_error")
+    }
+  }),
+)
+
+// GET /realtimeproducts - Gestión de productos en tiempo real (solo admin)
+router.get(
+  "/realtimeproducts",
+  asyncHandler(async (req, res) => {
+    const products = await productRepository.getAllProducts({}, { limit: 50 })
+
+    logger.info(`Real-time products page accessed`)
+
+    res.render("realTimeProducts", {
+      title: "Gestión de Productos",
+      products: products.products,
+      style: "styles.css",
     })
-  } catch (error) {
-    console.error("Error loading cart:", error)
-    res.status(500).send("Error al cargar el carrito")
-  }
-})
+  }),
+)
 
-// Ruta para login
+// GET /login - Página de login
 router.get("/login", (req, res) => {
-  res.render("login")
+  res.render("login", {
+    title: "Iniciar Sesión",
+    style: "styles.css",
+  })
 })
 
-// Ruta para registro
+// GET /register - Página de registro
 router.get("/register", (req, res) => {
-  res.render("register")
+  res.render("register", {
+    title: "Registrarse",
+    style: "styles.css",
+  })
 })
 
-// Ruta para perfil de usuario
-router.get("/profile", async (req, res) => {
-  try {
-    // En una implementación real, verificarías el token aquí
-    // Por ahora, renderizamos la vista que manejará la autenticación en el frontend
-    res.render("profile", {
-      user: {
-        id: "placeholder",
-        first_name: "Usuario",
-        last_name: "Demo",
-        email: "usuario@demo.com",
-        age: 25,
-        role: "user",
-        cart: null,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }
-    })
-  } catch (error) {
-    console.error("Error loading profile:", error)
-    res.redirect("/login")
+// GET /reset-password - Página de restablecimiento de contraseña
+router.get("/reset-password", (req, res) => {
+  const { token } = req.query
+
+  if (!token) {
+    return res.redirect("/login?error=invalid_token")
   }
+
+  res.render("reset-password", {
+    title: "Restablecer Contraseña",
+    token,
+    style: "styles.css",
+  })
 })
 
-// Ruta para dashboard de admin
-router.get("/admin/dashboard", async (req, res) => {
-  try {
-    // Obtener estadísticas básicas
-    const totalProducts = await productManager.getProducts({ limit: 1 })
-    
-    res.render("admin-dashboard", {
-      stats: {
-        totalProducts: totalProducts.payload?.length || 0,
-        totalUsers: 0, // Se actualizará cuando implementemos la funcionalidad
-        totalCarts: 0
-      }
-    })
-  } catch (error) {
-    console.error("Error loading admin dashboard:", error)
-    res.status(500).send("Error al cargar el dashboard")
-  }
+// GET /profile - Perfil de usuario (requiere autenticación)
+router.get("/profile", (req, res) => {
+  res.render("profile", {
+    title: "Mi Perfil",
+    style: "styles.css",
+  })
 })
+
+// GET /admin/dashboard - Panel de administración (solo admin)
+router.get(
+  "/admin/dashboard",
+  asyncHandler(async (req, res) => {
+    try {
+      // Obtener estadísticas básicas para el dashboard
+      const products = await productRepository.getAllProducts({}, { limit: 1000 })
+
+      const UserRepository = require("../repositories/UserRepository")
+      const allUsers = await UserRepository.getAllUsers()
+      const usersWithCarts = allUsers.filter((user) => user.cart)
+
+      const totalTickets = await TicketDAO.countDocuments({})
+
+      const stats = {
+        totalProducts: products.total || products.products.length,
+        totalUsers: allUsers.length,
+        totalCarts: usersWithCarts.length, // Conteo real de carritos activos
+        totalOrders: totalTickets, // Usar conteo directo de TicketDAO
+      }
+
+      logger.info(`Admin dashboard accessed`)
+
+      res.render("admin-dashboard", {
+        title: "Panel de Administración",
+        stats,
+        style: "styles.css",
+      })
+    } catch (error) {
+      logger.error("Error loading admin dashboard:", error)
+      res.status(500).render("error", {
+        title: "Error del servidor",
+        message: "Error al cargar el panel de administración",
+        style: "styles.css",
+      })
+    }
+  }),
+)
+
+// GET /admin/orders - Vista de órdenes para administrador
+router.get(
+  "/admin/orders",
+  asyncHandler(async (req, res) => {
+    try {
+      logger.info(`Admin orders page accessed`)
+
+      res.render("admin-orders", {
+        title: "Gestión de Órdenes",
+        style: "styles.css",
+      })
+    } catch (error) {
+      logger.error("Error loading admin orders:", error)
+      res.status(500).render("error", {
+        title: "Error del servidor",
+        message: "Error al cargar la gestión de órdenes",
+        style: "styles.css",
+      })
+    }
+  }),
+)
 
 module.exports = router

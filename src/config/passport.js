@@ -13,7 +13,6 @@ passport.use(
   new LocalStrategy(
     {
       usernameField: "email",
-      passwordField: "password",
     },
     async (email, password, done) => {
       try {
@@ -43,8 +42,8 @@ passport.use(
         console.error("Error en estrategia login:", error)
         return done(error)
       }
-    }
-  )
+    },
+  ),
 )
 
 // Estrategia Local para Registro
@@ -53,7 +52,6 @@ passport.use(
   new LocalStrategy(
     {
       usernameField: "email",
-      passwordField: "password",
       passReqToCallback: true,
     },
     async (req, email, password, done) => {
@@ -73,7 +71,7 @@ passport.use(
           first_name,
           last_name,
           email,
-          age: parseInt(age),
+          age: Number.parseInt(age),
           password,
           role: role || "user",
         })
@@ -87,8 +85,8 @@ passport.use(
         }
         return done(error)
       }
-    }
-  )
+    },
+  ),
 )
 
 // Estrategia JWT para validar tokens
@@ -116,8 +114,8 @@ passport.use(
         console.error("Error en estrategia JWT:", error)
         return done(error, false)
       }
-    }
-  )
+    },
+  ),
 )
 
 // Estrategia "current" para extraer usuario del token
@@ -145,8 +143,8 @@ passport.use(
         console.error("Error en estrategia current:", error)
         return done(error, false)
       }
-    }
-  )
+    },
+  ),
 )
 
 // Serialización (no necesaria para JWT, pero requerida por Passport)

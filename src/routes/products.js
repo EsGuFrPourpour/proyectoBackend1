@@ -1,100 +1,127 @@
 const express = require("express")
-const productManager = require("../managers/ProductManager") // Importar instancia singleton (SIN new)
-const { emitProductAdded, emitProductUpdated, emitProductDeleted } = require("../socket/socketManager")
-
 const router = express.Router()
+const productRepository = require("../repositories/ProductRepository")
+const { authenticateJWT, requireAdmin } = require("../middleware/auth")
+const { asyncHandler } = require("../utils/asyncHandler")
+const logger = require("../utils/logger")
 
-// GET con query params para paginación, filtros y ordenamiento
-router.get("/", async (req, res) => {
-  try {
-    console.log("=== OBTENIENDO PRODUCTOS CON QUERY PARAMS ===")
-    console.log("Query params:", req.query)
+// GET /api/products - Obtener productos con paginación y filtros
+router.get(
+  "/",
+  asyncHandler(async (req, res) => {
+    const { limit = 10, page = 1, sort, query, category, status } = req.query
 
     const options = {
-      limit: req.query.limit,
-      page: req.query.page,
-      sort: req.query.sort,
-      query: req.query.query,
-      category: req.query.category,
-      status: req.query.status,
+      limit: Number.parseInt(limit),
+      page: Number.parseInt(page),
+      sort: sort === "asc" ? { price: 1 } : sort === "desc" ? { price: -1 } : {},
+      query: query || "",
+      category: category || "",
+      status: status !== undefined ? status === "true" : undefined,
     }
 
-    const result = await productManager.getProducts(options)
-    res.json(result)
-  } catch (error) {
-    console.error("Error obteniendo productos:", error)
-    res.status(500).json({
-      status: "error",
-      error: "Error al obtener productos",
+    const result = await productRepository.getAllProducts({}, options)
+
+    logger.info(`Products retrieved: ${result.products.length} products`)
+    res.json({
+      status: "success",
+      payload: result.products,
+      total: result.total,
+      hasNextPage: result.hasNextPage,
+      hasPrevPage: result.hasPrevPage,
     })
-  }
-})
+  }),
+)
 
-router.get("/:pid", async (req, res) => {
-  try {
-    const product = await productManager.getProductById(req.params.pid)
-    if (!product) return res.status(404).json({ error: "Producto no encontrado" })
-    res.json(product)
-  } catch (error) {
-    res.status(500).json({ error: "Error al obtener el producto" })
-  }
-})
+// GET /api/products/:pid - Obtener producto por ID
+router.get(
+  "/:pid",
+  asyncHandler(async (req, res) => {
+    const { pid } = req.params
+    const product = await productRepository.getProductById(pid)
 
-router.post("/", async (req, res) => {
-  try {
-    const { title, description, code, price, stock, category, thumbnails } = req.body
-    if (!title || !description || !code || !price || !stock || !category) {
-      return res.status(400).json({ error: "Faltan campos obligatorios" })
+    if (!product) {
+      return res.status(404).json({
+        status: "error",
+        message: "Producto no encontrado",
+      })
     }
 
-    const newProduct = await productManager.addProduct({
-      title,
-      description,
-      code,
-      price: Number(price),
-      stock: Number(stock),
-      category,
-      thumbnails: thumbnails || [],
+    logger.info(`Product retrieved: ${product.title}`)
+    res.json({
+      status: "success",
+      payload: product,
     })
+  }),
+)
 
-    // Emitir evento Socket.IO
-    emitProductAdded(newProduct)
+// POST /api/products - Crear producto (solo admin)
+router.post(
+  "/",
+  authenticateJWT,
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const productData = req.body
+    const newProduct = await productRepository.createProduct(productData)
 
-    res.status(201).json(newProduct)
-  } catch (error) {
-    console.error("Error creating product:", error)
-    res.status(500).json({ error: error.message })
-  }
-})
+    logger.info(`Product created: ${newProduct.title} by admin ${req.user.email}`)
+    res.status(201).json({
+      status: "success",
+      message: "Producto creado exitosamente",
+      payload: newProduct,
+    })
+  }),
+)
 
-router.put("/:pid", async (req, res) => {
-  try {
-    const updatedProduct = await productManager.updateProduct(req.params.pid, req.body)
-    if (!updatedProduct) return res.status(404).json({ error: "Producto no encontrado" })
+// PUT /api/products/:pid - Actualizar producto (solo admin)
+router.put(
+  "/:pid",
+  authenticateJWT,
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { pid } = req.params
+    const updateData = req.body
 
-    // Emitir evento Socket.IO
-    emitProductUpdated(updatedProduct)
+    const updatedProduct = await productRepository.updateProduct(pid, updateData)
 
-    res.json(updatedProduct)
-  } catch (error) {
-    console.error("Error updating product:", error)
-    res.status(500).json({ error: error.message })
-  }
-})
+    if (!updatedProduct) {
+      return res.status(404).json({
+        status: "error",
+        message: "Producto no encontrado",
+      })
+    }
 
-router.delete("/:pid", async (req, res) => {
-  try {
-    const deleted = await productManager.deleteProduct(req.params.pid)
-    if (!deleted) return res.status(404).json({ error: "Producto no encontrado" })
+    logger.info(`Product updated: ${updatedProduct.title} by admin ${req.user.email}`)
+    res.json({
+      status: "success",
+      message: "Producto actualizado exitosamente",
+      payload: updatedProduct,
+    })
+  }),
+)
 
-    // Emitir evento Socket.IO
-    emitProductDeleted(req.params.pid)
+// DELETE /api/products/:pid - Eliminar producto (solo admin)
+router.delete(
+  "/:pid",
+  authenticateJWT,
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { pid } = req.params
+    const deletedProduct = await productRepository.deleteProduct(pid)
 
-    res.json({ message: "Producto eliminado" })
-  } catch (error) {
-    console.error("Error deleting product:", error)
-    res.status(500).json({ error: "Error al eliminar el producto" })
-  }
-})
+    if (!deletedProduct) {
+      return res.status(404).json({
+        status: "error",
+        message: "Producto no encontrado",
+      })
+    }
+
+    logger.info(`Product deleted: ${deletedProduct.title} by admin ${req.user.email}`)
+    res.json({
+      status: "success",
+      message: "Producto eliminado exitosamente",
+    })
+  }),
+)
 
 module.exports = router

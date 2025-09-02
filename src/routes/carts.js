@@ -1,257 +1,161 @@
 const express = require("express")
-const cartManager = require("../managers/CartManager")
-const productManager = require("../managers/ProductManager")
-const {
-  emitProductAddedToCart,
-  emitCartUpdated,
-  emitProductRemovedFromCart,
-  emitProductQuantityUpdated,
-} = require("../socket/socketManager")
-
 const router = express.Router()
+const CartRepository = require("../repositories/CartRepository")
+const ProductRepository = require("../repositories/ProductRepository")
+const UserRepository = require("../repositories/UserRepository")
+const { authenticateJWT } = require("../middleware/auth")
+const { asyncHandler } = require("../utils/asyncHandler")
+const logger = require("../utils/logger")
 
-// Crear un nuevo carrito
-router.post("/", async (req, res) => {
-  try {
-    const newCart = await cartManager.createCart()
-    res.status(201).json(newCart)
-  } catch (error) {
-    console.error("Error creating cart:", error)
-    res.status(500).json({ error: "Error al crear el carrito" })
+const cartRepository = CartRepository
+const productRepository = ProductRepository
+const userRepository = UserRepository
+
+const ensureUserHasCart = async (user) => {
+  if (!user.cart) {
+    const newCart = await cartRepository.createCart()
+    await userRepository.updateUser(user._id, { cart: newCart._id })
+    user.cart = newCart._id
+    return newCart._id
   }
-})
+  return user.cart
+}
 
-// Obtener un carrito por ID con información detallada de productos
-router.get("/:cid", async (req, res) => {
-  try {
-    console.log("=== OBTENIENDO CARRITO PARA API ===")
-    const cartWithDetails = await cartManager.getCartWithDetails(req.params.cid)
+// GET /api/carts/my-cart - Obtener carrito del usuario autenticado
+router.get(
+  "/my-cart",
+  authenticateJWT,
+  asyncHandler(async (req, res) => {
+    const cartId = await ensureUserHasCart(req.user)
+    const cart = await cartRepository.getCartById(cartId)
 
-    if (!cartWithDetails) {
-      return res.status(404).json({ error: "Carrito no encontrado" })
-    }
-
-    console.log("Respuesta del carrito:", cartWithDetails)
-    res.json(cartWithDetails)
-  } catch (error) {
-    console.error("Error getting cart:", error)
-    res.status(500).json({ error: "Error al obtener el carrito" })
-  }
-})
-
-// Agregar producto al carrito
-router.post("/:cid/product/:pid", async (req, res) => {
-  console.log("=== RUTA: Agregar producto al carrito ===")
-  console.log("Cart ID:", req.params.cid)
-  console.log("Product ID:", req.params.pid)
-
-  try {
-    const cart = await cartManager.addProductToCart(req.params.cid, req.params.pid)
-
-    if (!cart) {
-      console.log("Carrito no encontrado, enviando 404")
-      return res.status(404).json({ error: "Carrito no encontrado" })
-    }
-
-    console.log("Producto agregado exitosamente, emitiendo eventos Socket.IO")
-
-    // Emitir eventos Socket.IO a TODAS las pestañas conectadas
-    emitProductAddedToCart(req.params.cid, req.params.pid)
-    emitCartUpdated(req.params.cid, cart)
-
-    console.log("Enviando respuesta exitosa")
-    res.json(cart)
-  } catch (error) {
-    console.error("Error en ruta add to cart:", error)
-    res.status(500).json({
-      error: "Error al agregar el producto al carrito",
-      details: error.message,
-    })
-  }
-})
-
-// 🆕 DELETE api/carts/:cid/products/:pid - Eliminar producto específico del carrito
-router.delete("/:cid/products/:pid", async (req, res) => {
-  console.log("=== RUTA: Eliminar producto específico del carrito ===")
-  console.log("Cart ID:", req.params.cid)
-  console.log("Product ID:", req.params.pid)
-
-  try {
-    const cart = await cartManager.removeProductFromCart(req.params.cid, req.params.pid)
-
-    if (!cart) {
-      return res.status(404).json({ error: "Carrito no encontrado" })
-    }
-
-    console.log("Producto eliminado exitosamente, emitiendo eventos Socket.IO")
-    // Emitir eventos Socket.IO a TODAS las pestañas conectadas
-    emitProductRemovedFromCart(req.params.cid, req.params.pid)
-    emitCartUpdated(req.params.cid, cart)
-
+    logger.info(`User cart retrieved: ${cart._id} for user ${req.user.email}`)
     res.json({
       status: "success",
-      message: "Producto eliminado del carrito",
-      cart: cart,
+      payload: cart,
     })
-  } catch (error) {
-    console.error("Error removing product from cart:", error)
-    res.status(500).json({
-      status: "error",
-      error: "Error al eliminar el producto del carrito",
-    })
-  }
-})
+  }),
+)
 
-// 🆕 PUT api/carts/:cid - Actualizar carrito completo con array de productos
-router.put("/:cid", async (req, res) => {
-  console.log("=== RUTA: Actualizar carrito completo ===")
-  console.log("Cart ID:", req.params.cid)
-  console.log("Productos:", req.body.products)
+// POST /api/carts/my-cart/products/:pid - Agregar producto al carrito del usuario
+router.post(
+  "/my-cart/products/:pid",
+  authenticateJWT,
+  asyncHandler(async (req, res) => {
+    const { pid } = req.params
+    const { quantity = 1 } = req.body
 
-  try {
-    const { products } = req.body
+    const cartId = await ensureUserHasCart(req.user)
 
-    if (!products || !Array.isArray(products)) {
-      return res.status(400).json({
-        status: "error",
-        error: "Se requiere un array de productos en el formato: [{product: 'id', quantity: number}]",
-      })
-    }
-
-    // Validar formato de productos
-    for (const item of products) {
-      if (!item.product || !item.quantity || typeof item.quantity !== "number" || item.quantity <= 0) {
-        return res.status(400).json({
-          status: "error",
-          error: "Cada producto debe tener 'product' (ID) y 'quantity' (número mayor a 0)",
-        })
-      }
-    }
-
-    const cart = await cartManager.updateCart(req.params.cid, products)
-
-    if (!cart) {
+    // Verificar que el producto existe y tiene stock
+    const product = await productRepository.getProductById(pid)
+    if (!product) {
       return res.status(404).json({
         status: "error",
-        error: "Carrito no encontrado",
+        message: "Producto no encontrado",
       })
     }
 
-    // Emitir evento Socket.IO
-    emitCartUpdated(req.params.cid, cart)
+    if (product.stock < quantity) {
+      return res.status(400).json({
+        status: "error",
+        message: "Stock insuficiente",
+      })
+    }
 
+    const updatedCart = await cartRepository.addProductToCart(cartId, pid, quantity)
+
+    logger.info(`Product added to user cart: ${pid} by user ${req.user.email}`)
     res.json({
       status: "success",
-      message: "Carrito actualizado exitosamente",
-      cart: cart,
+      message: "Producto agregado al carrito exitosamente",
+      payload: updatedCart,
     })
-  } catch (error) {
-    console.error("Error updating cart:", error)
-    res.status(500).json({
-      status: "error",
-      error: error.message,
-    })
-  }
-})
+  }),
+)
 
-// 🆕 PUT api/carts/:cid/products/:pid - Actualizar SOLO la cantidad de un producto específico
-router.put("/:cid/products/:pid", async (req, res) => {
-  console.log("=== RUTA: Actualizar cantidad específica en carrito ===")
-  console.log("Cart ID:", req.params.cid)
-  console.log("Product ID:", req.params.pid)
-  console.log("Nueva cantidad:", req.body.quantity)
-
-  try {
+// PUT /api/carts/my-cart/products/:pid - Actualizar cantidad de producto en carrito del usuario
+router.put(
+  "/my-cart/products/:pid",
+  authenticateJWT,
+  asyncHandler(async (req, res) => {
+    const { pid } = req.params
     const { quantity } = req.body
 
-    if (!quantity || typeof quantity !== "number" || quantity <= 0) {
+    if (!quantity || quantity < 1) {
       return res.status(400).json({
         status: "error",
-        error: "La cantidad debe ser un número mayor a 0",
+        message: "La cantidad debe ser mayor a 0",
       })
     }
 
-    const result = await cartManager.updateProductQuantity(req.params.cid, req.params.pid, quantity)
+    const cartId = await ensureUserHasCart(req.user)
+    const updatedCart = await cartRepository.updateProductQuantity(cartId, pid, quantity)
 
-    if (!result) {
-      return res.status(404).json({
-        status: "error",
-        error: "Carrito o producto no encontrado",
-      })
-    }
-
-    console.log("Cantidad actualizada exitosamente, emitiendo eventos Socket.IO")
-
-    // Emitir eventos Socket.IO con información detallada
-    emitProductQuantityUpdated(req.params.cid, req.params.pid, {
-      quantity: result.newQuantity,
-      unitPrice: result.unitPrice,
-      subtotal: result.newSubtotal,
-    })
-    emitCartUpdated(req.params.cid, result.cart)
-
+    logger.info(`Product quantity updated in user cart: ${pid} by user ${req.user.email}`)
     res.json({
       status: "success",
       message: "Cantidad actualizada exitosamente",
-      data: {
-        productId: result.productId,
-        newQuantity: result.newQuantity,
-        unitPrice: result.unitPrice,
-        newSubtotal: result.newSubtotal,
-      },
+      payload: updatedCart,
     })
-  } catch (error) {
-    console.error("Error updating product quantity:", error)
-    res.status(500).json({
-      status: "error",
-      error: error.message,
+  }),
+)
+
+// DELETE /api/carts/my-cart/products/:pid - Eliminar producto del carrito del usuario
+router.delete(
+  "/my-cart/products/:pid",
+  authenticateJWT,
+  asyncHandler(async (req, res) => {
+    const { pid } = req.params
+
+    const cartId = await ensureUserHasCart(req.user)
+    const updatedCart = await cartRepository.removeProductFromCart(cartId, pid)
+
+    logger.info(`Product removed from user cart: ${pid} by user ${req.user.email}`)
+    res.json({
+      status: "success",
+      message: "Producto eliminado del carrito exitosamente",
+      payload: updatedCart,
     })
-  }
-})
+  }),
+)
 
-// 🆕 DELETE api/carts/:cid - Eliminar todos los productos del carrito
-router.delete("/:cid", async (req, res) => {
-  console.log("=== RUTA: Vaciar carrito completo ===")
-  console.log("Cart ID:", req.params.cid)
+// DELETE /api/carts/my-cart - Vaciar carrito del usuario
+router.delete(
+  "/my-cart",
+  authenticateJWT,
+  asyncHandler(async (req, res) => {
+    const cartId = await ensureUserHasCart(req.user)
+    const clearedCart = await cartRepository.clearCart(cartId)
 
-  try {
-    const cart = await cartManager.clearCart(req.params.cid)
+    logger.info(`User cart cleared by user ${req.user.email}`)
+    res.json({
+      status: "success",
+      message: "Carrito vaciado exitosamente",
+      payload: clearedCart,
+    })
+  }),
+)
+
+// GET /api/carts/:cid - Obtener carrito por ID (legacy)
+router.get(
+  "/:cid",
+  asyncHandler(async (req, res) => {
+    const { cid } = req.params
+    const cart = await cartRepository.getCartById(cid)
 
     if (!cart) {
       return res.status(404).json({
         status: "error",
-        error: "Carrito no encontrado",
+        message: "Carrito no encontrado",
       })
     }
 
-    // Emitir evento Socket.IO
-    emitCartUpdated(req.params.cid, cart)
-
     res.json({
       status: "success",
-      message: "Carrito vaciado exitosamente",
-      cart: cart,
+      payload: cart,
     })
-  } catch (error) {
-    console.error("Error clearing cart:", error)
-    res.status(500).json({
-      status: "error",
-      error: "Error al vaciar el carrito",
-    })
-  }
-})
-
-// 🔄 MANTENER COMPATIBILIDAD - Rutas existentes con estructura anterior
-router.delete("/:cid/product/:pid", async (req, res) => {
-  // Redirigir a la nueva ruta estándar
-  req.url = req.url.replace("/product/", "/products/")
-  router.handle(req, res)
-})
-
-router.put("/:cid/product/:pid", async (req, res) => {
-  // Redirigir a la nueva ruta estándar
-  req.url = req.url.replace("/product/", "/products/")
-  router.handle(req, res)
-})
+  }),
+)
 
 module.exports = router

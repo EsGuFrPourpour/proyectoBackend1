@@ -6,7 +6,7 @@
   
   <div id="notifications"></div>
   
-   Estadísticas generales 
+  <!-- Estadísticas generales -->
   <div class="stats-section">
     <h3>📊 Estadísticas Generales</h3>
     <div class="stats-grid">
@@ -38,13 +38,13 @@
         <div class="stat-icon">📋</div>
         <div class="stat-info">
           <h4>Órdenes</h4>
-          <p class="stat-number">0</p>
+          <p class="stat-number" id="totalOrders">{{stats.totalOrders}}</p>
         </div>
       </div>
     </div>
   </div>
   
-   Acciones rápidas 
+  <!-- Acciones rápidas -->
   <div class="quick-actions">
     <h3>⚡ Acciones Rápidas</h3>
     <div class="actions-grid">
@@ -54,27 +54,27 @@
         <p>Agregar, editar o eliminar productos</p>
       </a>
       
-      <button onclick="loadUsers()" class="action-card">
+      <a href="/admin/orders" class="action-card">
+        <div class="action-icon">📋</div>
+        <h4>Gestionar Órdenes</h4>
+        <p>Ver y administrar órdenes de compra</p>
+      </a>
+      
+      <button data-action="load-users" class="action-card">
         <div class="action-icon">👥</div>
         <h4>Ver Usuarios</h4>
         <p>Administrar cuentas de usuario</p>
       </button>
       
-      <button onclick="loadSystemInfo()" class="action-card">
+      <button data-action="load-system-info" class="action-card">
         <div class="action-icon">⚙️</div>
         <h4>Información del Sistema</h4>
         <p>Estado del servidor y base de datos</p>
       </button>
-      
-      <button onclick="seedDatabase()" class="action-card">
-        <div class="action-icon">🌱</div>
-        <h4>Poblar Base de Datos</h4>
-        <p>Agregar datos de prueba</p>
-      </button>
     </div>
   </div>
   
-   Sección de usuarios 
+  <!-- Sección de usuarios -->
   <div id="usersSection" class="users-section" style="display: none;">
     <h3>👥 Gestión de Usuarios</h3>
     <div id="usersList" class="users-list">
@@ -82,7 +82,7 @@
     </div>
   </div>
   
-   Información del sistema 
+  <!-- Información del sistema -->
   <div id="systemInfo" class="system-info" style="display: none;">
     <h3>⚙️ Información del Sistema</h3>
     <div id="systemDetails" class="system-details">
@@ -96,15 +96,33 @@
 const userData = JSON.parse(localStorage.getItem('userData') || '{}');
 const authToken = localStorage.getItem('authToken');
 
-if (!authToken || userData.role !== 'admin') {
-  alert('Acceso denegado. Solo administradores pueden acceder a esta página.');
-  window.location.href = '/products';
-}
+document.addEventListener('click', function(e) {
+  const action = e.target.closest('[data-action]')?.getAttribute('data-action');
+  
+  switch(action) {
+    case 'load-users':
+      loadUsers();
+      break;
+    case 'load-system-info':
+      loadSystemInfo();
+      break;
+    case 'seed-database':
+      seedDatabase();
+      break;
+    case 'edit-user':
+      const userId = e.target.getAttribute('data-user-id');
+      if (userId) editUser(userId);
+      break;
+    case 'delete-user':
+      const deleteUserId = e.target.getAttribute('data-user-id');
+      if (deleteUserId) deleteUser(deleteUserId);
+      break;
+  }
+});
 
 // Cargar estadísticas actualizadas
 async function loadStats() {
   try {
-    // Cargar productos
     const productsResponse = await fetch('/api/products?limit=1');
     const productsData = await productsResponse.json();
     
@@ -123,9 +141,26 @@ async function loadStats() {
       console.log('No se pudieron cargar los usuarios');
     }
     
-    // Actualizar productos
-    if (productsData.status === 'success') {
-      document.getElementById('totalProducts').textContent = productsData.totalPages * 10; // Estimación
+    if (productsData.status === 'success' && productsData.totalDocs !== undefined) {
+      document.getElementById('totalProducts').textContent = productsData.totalDocs;
+    } else {
+      // Si no hay totalDocs, mantener el valor que viene del servidor
+      console.log('Manteniendo estadísticas del servidor');
+    }
+    
+    // Cargar órdenes (si el endpoint está disponible)
+    try {
+      const ordersResponse = await fetch('/api/orders', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+      if (ordersResponse.ok) {
+        const ordersData = await ordersResponse.json();
+        document.getElementById('totalOrders').textContent = ordersData.orders?.length || 0;
+      }
+    } catch (error) {
+      console.log('No se pudieron cargar las órdenes');
     }
     
   } catch (error) {
@@ -135,24 +170,56 @@ async function loadStats() {
 
 async function loadUsers() {
   try {
+    console.log('[v0] DEBUG - loadUsers iniciado');
+    console.log('[v0] authToken:', authToken ? 'Token presente' : 'Token ausente');
+    console.log('[v0] userData:', userData);
+    
+    if (!authToken) {
+      showNotification('No hay token de autenticación. Por favor, inicia sesión nuevamente.', 'error');
+      setTimeout(() => {
+        window.location.href = '/login';
+      }, 2000);
+      return;
+    }
+    
     showNotification('Cargando usuarios...', 'info');
     
     const response = await fetch('/api/users', {
       headers: {
-        'Authorization': `Bearer ${authToken}`
+        'Authorization': `Bearer ${authToken}`,
+        'Content-Type': 'application/json'
       }
     });
     
+    console.log('[v0] Response status:', response.status);
+    console.log('[v0] Response headers:', Object.fromEntries(response.headers.entries()));
+    
     if (response.ok) {
       const data = await response.json();
+      console.log('[v0] Users data received:', data);
       displayUsers(data.users);
       document.getElementById('usersSection').style.display = 'block';
       document.getElementById('systemInfo').style.display = 'none';
+      showNotification(`${data.users.length} usuarios cargados exitosamente`, 'success');
     } else {
-      showNotification('Error al cargar usuarios', 'error');
+      const errorData = await response.json().catch(() => ({ error: 'Error desconocido' }));
+      console.log('[v0] Error response:', errorData);
+      
+      if (response.status === 401) {
+        showNotification('Token de autenticación inválido o expirado. Redirigiendo al login...', 'error');
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('userData');
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 2000);
+      } else if (response.status === 403) {
+        showNotification('No tienes permisos de administrador para ver los usuarios', 'error');
+      } else {
+        showNotification(errorData.error || 'Error al cargar usuarios', 'error');
+      }
     }
   } catch (error) {
-    console.error('Error:', error);
+    console.error('[v0] Error en loadUsers:', error);
     showNotification('Error al conectar con el servidor', 'error');
   }
 }
@@ -176,8 +243,8 @@ function displayUsers(users) {
         </span>
       </div>
       <div class="user-actions">
-        <button onclick="editUser('${user._id}')" class="btn-edit-user">Editar</button>
-        ${user.role !== 'admin' ? `<button onclick="deleteUser('${user._id}')" class="btn-delete-user">Eliminar</button>` : ''}
+        <button data-action="edit-user" data-user-id="${user._id}" class="btn-edit-user">Editar</button>
+        ${user.role !== 'admin' ? `<button data-action="delete-user" data-user-id="${user._id}" class="btn-delete-user">Eliminar</button>` : ''}
       </div>
     </div>
   `).join('');
@@ -265,9 +332,53 @@ function showNotification(message, type = 'info') {
   }
 }
 
+async function verifyToken() {
+  if (!authToken) {
+    console.log('[v0] No hay token, redirigiendo al login');
+    alert('No hay token de autenticación. Por favor, inicia sesión.');
+    window.location.href = '/login';
+    return false;
+  }
+  
+  try {
+    // Verificar token con endpoint de usuario actual
+    const response = await fetch('/api/sessions/current', {
+      headers: {
+        'Authorization': `Bearer ${authToken}`
+      }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      console.log('[v0] Token válido, usuario:', data.user);
+      
+      if (data.user.role !== 'admin') {
+        alert('Acceso denegado. Solo administradores pueden acceder a esta página.');
+        window.location.href = '/products';
+        return false;
+      }
+      
+      return true;
+    } else {
+      console.log('[v0] Token inválido, limpiando localStorage');
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('userData');
+      alert('Sesión expirada. Por favor, inicia sesión nuevamente.');
+      window.location.href = '/login';
+      return false;
+    }
+  } catch (error) {
+    console.error('[v0] Error verificando token:', error);
+    return false;
+  }
+}
+
 // Cargar estadísticas al iniciar
-document.addEventListener('DOMContentLoaded', () => {
-  loadStats();
+document.addEventListener('DOMContentLoaded', async () => {
+  const tokenValid = await verifyToken();
+  if (tokenValid) {
+    loadStats();
+  }
 });
 </script>
 

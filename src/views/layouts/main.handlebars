@@ -12,8 +12,14 @@
       <h1><a href="/products">🛍️ Tienda Online</a></h1>
       <nav>
         <a href="/products">📦 Productos</a>
-        <a href="/realtimeproducts">⚡ Gestión</a>
-        <a href="/cart/new" id="cart-link">🛒 Carrito</a>
+        <!-- Solo mostrar Gestión a administradores -->
+        <div id="admin-nav" style="display: none;">
+          <a href="/realtimeproducts">⚡ Gestión</a>
+        </div>
+        <a href="/cart/my-cart" id="cart-link">
+          🛒 Carrito
+          <span id="cart-counter" class="cart-counter" style="display: none;">0</span>
+        </a>
         
         <!-- Enlaces de autenticación -->
         <div class="auth-nav" id="auth-nav">
@@ -44,47 +50,90 @@
     // Función global para actualizar enlaces del carrito
     function updateGlobalCartLink(cartId) {
       const cartLink = document.getElementById('cart-link');
-      if (cartLink && cartId) {
-        cartLink.href = `/cart/${cartId}`;
+      const cartCounter = document.getElementById('cart-counter');
+      if (cartLink && cartId && cartId !== 'undefined' && cartId !== 'null' && cartId !== '[object Object]') {
+        const cartIdString = typeof cartId === 'object' ? (cartId._id || cartId.id || '') : String(cartId);
+        if (cartIdString && cartIdString.length >= 24) {
+          cartLink.href = `/cart/${cartIdString}`;
+          cartLink.removeAttribute('data-action');
+          
+          // Actualizar contador de productos
+          const itemCount = cartId.items ? cartId.items.length : 0;
+          cartCounter.textContent = itemCount;
+          cartCounter.style.display = itemCount > 0 ? 'inline' : 'none';
+        }
       }
     }
     
-    // Actualizar navegación según estado de autenticación
+    function goToCart() {
+      const authToken = localStorage.getItem('authToken');
+      if (!authToken) {
+        alert('Debes iniciar sesión para acceder al carrito');
+        window.location.href = '/login';
+        return;
+      }
+      window.location.href = '/cart/my-cart';
+    }
+    
+    function logout() {
+      if (confirm('¿Estás seguro de que quieres cerrar sesión?')) {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('userData');
+        localStorage.removeItem('cartId'); // Limpiar cartId obsoleto
+        window.location.href = '/login';
+      }
+    }
+
     function updateAuthNavigation() {
       const authNav = document.getElementById('auth-nav');
-      const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+      const adminNav = document.getElementById('admin-nav');
       const authToken = localStorage.getItem('authToken');
+      const userData = localStorage.getItem('userData');
       
-      if (authToken && userData.id) {
-        // Usuario autenticado
-        authNav.innerHTML = `
-          <a href="/profile">👤 ${userData.first_name || 'Perfil'}</a>
-          ${userData.role === 'admin' ? '<a href="/admin/dashboard">⚙️ Admin</a>' : ''}
-          <a href="#" onclick="logout()" style="color: #dc3545;">🚪 Salir</a>
-        `;
+      if (authToken && userData) {
+        try {
+          const user = JSON.parse(userData);
+          const isAdmin = user.role === 'admin';
+          
+          if (adminNav) {
+            adminNav.style.display = isAdmin ? 'inline' : 'none';
+          }
+          
+          authNav.innerHTML = `
+            <a href="/profile">👤 Perfil</a>
+            ${isAdmin ? '<a href="/admin/dashboard">⚙️ Admin</a>' : ''}
+            <a href="#" data-action="logout">🚪 Salir</a>
+          `;
+        } catch (error) {
+          console.error('[v0] Error parsing user data:', error);
+          if (adminNav) adminNav.style.display = 'none';
+          authNav.innerHTML = `
+            <a href="/login">🔑 Iniciar Sesión</a>
+            <a href="/register">📝 Registrarse</a>
+          `;
+        }
       } else {
         // Usuario no autenticado
+        if (adminNav) adminNav.style.display = 'none';
         authNav.innerHTML = `
-          <a href="/login">🔐 Iniciar Sesión</a>
+          <a href="/login">🔑 Iniciar Sesión</a>
           <a href="/register">📝 Registrarse</a>
         `;
       }
     }
 
-    function logout() {
-      if (confirm('¿Estás seguro de que quieres cerrar sesión?')) {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('userData');
-        window.location.href = '/login';
-      }
-    }
-
     document.addEventListener('DOMContentLoaded', () => {
       updateAuthNavigation();
-      
-      const cartId = localStorage.getItem('cartId');
-      if (cartId) {
-        updateGlobalCartLink(cartId);
+    });
+    
+    document.addEventListener('click', function(e) {
+      if (e.target.matches('[data-action="logout"]')) {
+        e.preventDefault();
+        logout();
+      }
+      if (e.target.matches('[data-action="go-to-cart"]')) {
+        e.preventDefault();
+        goToCart();
       }
     });
   </script>

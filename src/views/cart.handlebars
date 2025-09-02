@@ -1,244 +1,336 @@
-<h2>Carrito de Compras</h2>
+<div class="cart-container">
+  <div class="cart-header">
+    <h1>🛒 Mi Carrito</h1>
+    <p class="cart-subtitle">Revisa tus productos antes de finalizar la compra</p>
+  </div>
 
-<div id="notifications"></div>
-
-{{#if products.length}}
-  <div class="cart-container">
-    <ul class="cart-items" id="cart-items">
-      {{#each products}}
-        <li class="cart-item" data-product-id="{{this._id}}">
-          <div class="product-info">
-            <h4>{{this.title}}</h4>
-            <p>{{this.description}}</p>
-            <p><strong>Precio unitario:</strong> $<span class="unit-price">{{this.price}}</span></p>
-            <p><strong>Código:</strong> {{this.code}}</p>
+  <!-- Estructura siempre visible para carga dinámica -->
+  <div class="cart-content">
+    <div class="cart-items">
+      <!-- Los productos se cargarán dinámicamente aquí -->
+      {{#each cart.products}}
+        <div class="cart-item" data-product-id="{{this.product._id}}">
+          <div class="item-image">
+            <img src="{{#if this.product.thumbnails.[0]}}{{this.product.thumbnails.[0]}}{{else}}/images/no-image.png{{/if}}" 
+                 alt="{{this.product.title}}" 
+                 data-fallback="/images/no-image.png">
           </div>
-          <div class="quantity-controls">
-            <label>Cantidad:</label>
-            <div class="quantity-input">
-              <button 
-                class="btn-quantity btn-decrease"
-                data-cart-id="{{../cartId}}"
-                data-product-id="{{this._id}}"
-                data-current-quantity="{{this.quantity}}">-</button>
-              <span class="quantity" data-product-id="{{this._id}}">{{this.quantity}}</span>
-              <button 
-                class="btn-quantity btn-increase"
-                data-cart-id="{{../cartId}}"
-                data-product-id="{{this._id}}"
-                data-current-quantity="{{this.quantity}}">+</button>
-            </div>
-            <p><strong>Subtotal:</strong> $<span class="subtotal" data-product-id="{{this._id}}">{{this.total}}</span></p>
+          
+          <div class="item-details">
+            <h3 class="item-title">{{this.product.title}}</h3>
+            <p class="item-description">{{this.product.description}}</p>
+            <p class="item-price">${{this.product.price}}</p>
           </div>
+          
+          <div class="item-quantity">
+            <button class="quantity-btn decrease" data-action="decrease-quantity" data-product-id="{{this.product._id}}">-</button>
+            <span class="quantity-display">{{this.quantity}}</span>
+            <button class="quantity-btn increase" data-action="increase-quantity" data-product-id="{{this.product._id}}">+</button>
+          </div>
+          
+          <div class="item-total">
+            <span class="item-subtotal">${{multiply this.product.price this.quantity}}</span>
+          </div>
+          
           <div class="item-actions">
-            <button 
-              class="btn-remove"
-              data-cart-id="{{../cartId}}"
-              data-product-id="{{this._id}}">Eliminar</button>
+            <button class="remove-btn" data-action="remove-from-cart" data-product-id="{{this.product._id}}">
+              🗑️ Eliminar
+            </button>
           </div>
-        </li>
+        </div>
       {{/each}}
-    </ul>
+    </div>
     
     <div class="cart-summary">
-      <h3>Total del Carrito: $<span id="cart-total">{{total}}</span></h3>
-      <button id="checkout-btn" class="btn-checkout">Finalizar Compra</button>
-      <a href="/" class="btn-continue">Seguir Comprando</a>
+      <div class="summary-card">
+        <h3>Resumen del Pedido</h3>
+        <div class="summary-line">
+          <span>Subtotal:</span>
+          <span class="cart-total">$0</span>
+        </div>
+        <div class="summary-line">
+          <span>Envío:</span>
+          <span>Gratis</span>
+        </div>
+        <div class="summary-line total-line">
+          <span><strong>Total:</strong></span>
+          <span class="cart-total"><strong>$0</strong></span>
+        </div>
+        
+        <div class="checkout-actions">
+          <button class="btn-checkout" data-action="checkout">
+            💳 Proceder al Pago
+          </button>
+          <a href="/products" class="btn-continue-shopping">
+            ← Seguir Comprando
+          </a>
+        </div>
+      </div>
     </div>
   </div>
-{{else}}
-  <div class="empty-cart" id="empty-cart">
-    <p>El carrito está vacío.</p>
-    <a href="/" class="btn-shop">Ver Productos</a>
-  </div>
-{{/if}}
 
-<!-- Cargar el JavaScript específico del carrito DESPUÉS del layout -->
-<script src="/js/cart.js"></script>
+  <!-- Mensaje de carrito vacío oculto por defecto -->
+  <div class="empty-cart" style="display: none;">
+    <div class="empty-cart-icon">🛒</div>
+    <h2>Tu carrito está vacío</h2>
+    <p>¡Agrega algunos productos para comenzar!</p>
+    <a href="/products" class="btn-start-shopping">
+      🛍️ Comenzar a Comprar
+    </a>
+  </div>
+</div>
+
+<div id="notification" class="notification hidden">
+  <span id="notification-message"></span>
+</div>
 
 <style>
 .cart-container {
-  max-width: 800px;
+  max-width: 1200px;
   margin: 0 auto;
-}
-
-.cart-items {
-  list-style: none;
-  padding: 0;
-}
-
-.cart-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   padding: 20px;
-  margin-bottom: 15px;
-  border: 1px solid #dee2e6;
-  border-radius: 8px;
-  background: white;
 }
 
-.product-info {
-  flex: 2;
-}
-
-.product-info h4 {
-  margin: 0 0 10px 0;
-  color: #495057;
-}
-
-.product-info p {
-  margin: 5px 0;
-  color: #6c757d;
-}
-
-.quantity-controls {
-  flex: 1;
+.cart-header {
   text-align: center;
-  padding: 0 20px;
+  margin-bottom: 30px;
 }
 
-.quantity-input {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  margin: 10px 0;
+.cart-header h1 {
+  color: #333;
+  margin-bottom: 10px;
 }
 
-.btn-quantity {
-  background-color: #007bff;
-  color: white;
-  border: none;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  cursor: pointer;
+.cart-subtitle {
+  color: #666;
   font-size: 16px;
 }
 
-.btn-quantity:hover {
-  background-color: #0056b3;
-}
-
-.quantity {
-  font-weight: bold;
-  font-size: 18px;
-  min-width: 30px;
-}
-
-.item-actions {
-  flex: 0;
-}
-
-.btn-remove {
-  background-color: #dc3545;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.btn-remove:hover {
-  background-color: #c82333;
-}
-
-.cart-summary {
-  background: #f8f9fa;
-  padding: 20px;
-  border-radius: 8px;
-  text-align: center;
+.cart-content {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 30px;
   margin-top: 20px;
 }
 
-.cart-summary h3 {
-  color: #495057;
-  margin-bottom: 20px;
+.cart-items {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.cart-item {
+  display: grid;
+  grid-template-columns: 100px 1fr auto auto auto;
+  gap: 20px;
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: white;
+  align-items: center;
+}
+
+.item-image img {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.item-details h3 {
+  margin: 0 0 5px 0;
+  color: #333;
+}
+
+.item-description {
+  color: #666;
+  font-size: 14px;
+  margin: 5px 0;
+}
+
+.item-price {
+  font-weight: bold;
+  color: #007bff;
+  margin: 5px 0 0 0;
+}
+
+.item-quantity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.quantity-btn {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #ddd;
+  background: white;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quantity-btn:hover {
+  background: #f5f5f5;
+}
+
+.quantity-display {
+  min-width: 30px;
+  text-align: center;
+  font-weight: bold;
+}
+
+.item-subtotal {
+  font-weight: bold;
+  color: #333;
+  font-size: 16px;
+}
+
+.remove-btn {
+  background: #dc3545;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.remove-btn:hover {
+  background: #c82333;
+}
+
+.summary-card {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 20px;
+  height: fit-content;
+}
+
+.summary-card h3 {
+  margin-top: 0;
+  color: #333;
+}
+
+.summary-line {
+  display: flex;
+  justify-content: space-between;
+  margin: 10px 0;
+  padding: 5px 0;
+}
+
+.total-line {
+  border-top: 1px solid #ddd;
+  margin-top: 15px;
+  padding-top: 15px;
+  font-size: 18px;
+}
+
+.checkout-actions {
+  margin-top: 20px;
 }
 
 .btn-checkout {
-  background-color: #28a745;
+  width: 100%;
+  background: #28a745;
   color: white;
   border: none;
-  padding: 12px 24px;
+  padding: 12px;
   border-radius: 4px;
-  cursor: pointer;
   font-size: 16px;
-  margin-right: 10px;
+  cursor: pointer;
+  margin-bottom: 10px;
 }
 
 .btn-checkout:hover {
-  background-color: #218838;
+  background: #218838;
 }
 
-.btn-continue {
-  background-color: #6c757d;
-  color: white;
+.btn-continue-shopping {
+  display: block;
+  text-align: center;
+  color: #007bff;
   text-decoration: none;
-  padding: 12px 24px;
-  border-radius: 4px;
-  display: inline-block;
+  padding: 8px;
 }
 
-.btn-continue:hover {
-  background-color: #5a6268;
+.btn-continue-shopping:hover {
+  text-decoration: underline;
 }
 
 .empty-cart {
   text-align: center;
-  padding: 40px;
+  padding: 60px 20px;
 }
 
-.btn-shop {
-  background-color: #007bff;
+.empty-cart-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+}
+
+.empty-cart h2 {
+  color: #333;
+  margin-bottom: 10px;
+}
+
+.empty-cart p {
+  color: #666;
+  margin-bottom: 30px;
+}
+
+.btn-start-shopping {
+  display: inline-block;
+  background: #007bff;
   color: white;
   text-decoration: none;
   padding: 12px 24px;
   border-radius: 4px;
-  display: inline-block;
+  font-size: 16px;
 }
 
-.btn-shop:hover {
-  background-color: #0056b3;
+.btn-start-shopping:hover {
+  background: #0056b3;
 }
 
-/* Estilos para notificaciones */
-.notifications {
-  margin-bottom: 20px;
+.notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: #28a745;
+  color: white;
+  padding: 12px 20px;
   border-radius: 4px;
-  min-height: 20px;
+  z-index: 1000;
+  transition: all 0.3s ease;
 }
 
-.notifications .success {
-  background: #d4edda;
-  border: 1px solid #c3e6cb;
-  color: #155724;
-  padding: 10px;
-  border-radius: 4px;
+.notification.hidden {
+  opacity: 0;
+  transform: translateX(100%);
 }
 
-.notifications .error {
-  background: #f8d7da;
-  border: 1px solid #f5c6cb;
-  color: #721c24;
-  padding: 10px;
-  border-radius: 4px;
+.notification.error {
+  background: #dc3545;
 }
 
-.notifications .warning {
-  background: #fff3cd;
-  border: 1px solid #ffeaa7;
-  color: #856404;
-  padding: 10px;
-  border-radius: 4px;
-}
-
-.notifications .info {
-  background: #d1ecf1;
-  border: 1px solid #bee5eb;
-  color: #0c5460;
-  padding: 10px;
-  border-radius: 4px;
+@media (max-width: 768px) {
+  .cart-content {
+    grid-template-columns: 1fr;
+  }
+  
+  .cart-item {
+    grid-template-columns: 1fr;
+    text-align: center;
+    gap: 15px;
+  }
+  
+  .item-image {
+    justify-self: center;
+  }
 }
 </style>
+
+<script src="/js/cart.js"></script>

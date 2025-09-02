@@ -1,0 +1,931 @@
+<div class="admin-orders">
+  <div class="orders-header">
+    <h2>📋 Gestión de Órdenes</h2>
+    <p>Administra todas las órdenes de compra del sistema</p>
+  </div>
+  
+  <div id="notifications"></div>
+  
+   Filtros 
+  <div class="filters-section">
+    <h3>🔍 Filtros</h3>
+    <div class="filters-form">
+      <div class="filter-group">
+        <label for="statusFilter">Estado</label>
+        <select id="statusFilter" name="status">
+          <option value="">Todos los estados</option>
+          <option value="pending">Pendiente</option>
+          <option value="completed">Completado</option>
+          <option value="cancelled">Cancelado</option>
+        </select>
+      </div>
+      
+      <div class="filter-group">
+        <label for="dateFromFilter">Fecha desde</label>
+        <input type="date" id="dateFromFilter" name="dateFrom">
+      </div>
+      
+      <div class="filter-group">
+        <label for="dateToFilter">Fecha hasta</label>
+        <input type="date" id="dateToFilter" name="dateTo">
+      </div>
+      
+      <div class="filter-actions">
+        <button type="button" id="applyFilters" class="btn-filter">Aplicar Filtros</button>
+        <button type="button" id="clearFilters" class="btn-clear">Limpiar</button>
+      </div>
+    </div>
+  </div>
+  
+   Tabla de órdenes 
+  <div class="orders-table-section">
+    <div class="table-header">
+      <h3>📊 Lista de Órdenes</h3>
+      <div class="table-stats">
+        <span id="ordersCount">Cargando...</span>
+      </div>
+    </div>
+    
+    <div class="table-container">
+      <table class="orders-table">
+        <thead>
+          <tr>
+            <th>ID Orden</th>
+            <th>Cliente</th>
+            <th>Fecha</th>
+            <th>Total</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="ordersTableBody">
+          <tr>
+            <td colspan="6" class="loading-row">
+              <div class="loading-spinner"></div>
+              Cargando órdenes...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    
+     Paginación 
+    <div class="pagination-section">
+      <div class="pagination-info">
+        <span id="paginationInfo">Mostrando 0 de 0 órdenes</span>
+      </div>
+      <div class="pagination-controls">
+        <button id="prevPage" class="btn-page" disabled>← Anterior</button>
+        <span id="currentPageInfo">Página 1 de 1</span>
+        <button id="nextPage" class="btn-page" disabled>Siguiente →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+ Modal para ver detalles de orden 
+<div id="orderModal" class="modal" style="display: none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>📋 Detalles de la Orden</h3>
+      <button class="modal-close" onclick="closeOrderModal()">&times;</button>
+    </div>
+    <div class="modal-body" id="orderModalBody">
+       Se llenará dinámicamente 
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeOrderModal()" class="btn-secondary">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Variables globales
+let currentPage = 1;
+let currentFilters = {};
+let allOrders = [];
+
+// Verificar autenticación y permisos
+const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+const authToken = localStorage.getItem('authToken');
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!authToken || userData.role !== 'admin') {
+    showNotification('Acceso denegado. Solo administradores pueden ver esta página.', 'error');
+    setTimeout(() => {
+      window.location.href = '/admin/dashboard';
+    }, 2000);
+    return;
+  }
+  
+  await loadOrders();
+  setupEventListeners();
+});
+
+function setupEventListeners() {
+  document.getElementById('applyFilters').addEventListener('click', applyFilters);
+  document.getElementById('clearFilters').addEventListener('click', clearFilters);
+  document.getElementById('prevPage').addEventListener('click', () => changePage(currentPage - 1));
+  document.getElementById('nextPage').addEventListener('click', () => changePage(currentPage + 1));
+}
+
+async function loadOrders(filters = {}) {
+  try {
+    showNotification('Cargando órdenes...', 'info');
+    
+    const queryParams = new URLSearchParams({
+      page: currentPage,
+      limit: 10,
+      ...filters
+    });
+    
+    const response = await fetch(`/api/purchase/admin/tickets?${queryParams}`, {
+      headers: {
+        'Authorization': `Bearer ${authToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      allOrders = data.tickets;
+      displayOrders(data.tickets);
+      updatePagination(data.pagination);
+      updateOrdersCount(data.pagination.total);
+      showNotification(`${data.tickets.length} órdenes cargadas exitosamente`, 'success');
+    } else {
+      const errorData = await response.json();
+      showNotification(errorData.error || 'Error al cargar órdenes', 'error');
+    }
+  } catch (error) {
+    console.error('Error loading orders:', error);
+    showNotification('Error al conectar con el servidor', 'error');
+  }
+}
+
+function displayOrders(orders) {
+  const tbody = document.getElementById('ordersTableBody');
+  
+  if (!orders || orders.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" class="empty-row">
+          <div class="empty-state">
+            <div class="empty-icon">📋</div>
+            <h4>No hay órdenes</h4>
+            <p>No se encontraron órdenes con los filtros aplicados</p>
+          </div>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+  
+  tbody.innerHTML = orders.map(order => `
+    <tr class="order-row">
+      <td class="order-id">
+        <span class="ticket-code">${order.code}</span>
+      </td>
+      <td class="customer-info">
+        <div class="customer-name">${order.purchaser}</div>
+      </td>
+      <td class="order-date">
+        ${new Date(order.purchase_datetime).toLocaleDateString('es-ES')}
+        <div class="order-time">${new Date(order.purchase_datetime).toLocaleTimeString('es-ES')}</div>
+      </td>
+      <td class="order-total">
+        <span class="amount">$${order.amount.toFixed(2)}</span>
+      </td>
+      <td class="order-status">
+        <span class="status-badge ${order.status || 'pending'}">
+          ${getStatusText(order.status || 'pending')}
+        </span>
+      </td>
+      <td class="order-actions">
+        <button onclick="viewOrder('${order._id}')" class="btn-view" title="Ver detalles">
+          👁️ Ver
+        </button>
+        ${(order.status !== 'completed') ? `
+          <button onclick="markAsCompleted('${order._id}')" class="btn-complete" title="Marcar como completado">
+            ✅ Completar
+          </button>
+        ` : ''}
+      </td>
+    </tr>
+  `).join('');
+}
+
+function getStatusText(status) {
+  const statusMap = {
+    'pending': '⏳ Pendiente',
+    'completed': '✅ Completado',
+    'cancelled': '❌ Cancelado'
+  };
+  return statusMap[status] || '⏳ Pendiente';
+}
+
+async function viewOrder(orderId) {
+  try {
+    const response = await fetch(`/api/purchase/tickets/${orderId}`, {
+      headers: {
+        'Authorization': `Bearer ${authToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      showOrderModal(data.ticket);
+    } else {
+      showNotification('Error al cargar detalles de la orden', 'error');
+    }
+  } catch (error) {
+    console.error('Error viewing order:', error);
+    showNotification('Error al conectar con el servidor', 'error');
+  }
+}
+
+function showOrderModal(order) {
+  const modal = document.getElementById('orderModal');
+  const modalBody = document.getElementById('orderModalBody');
+  
+  modalBody.innerHTML = `
+    <div class="order-details">
+      <div class="detail-section">
+        <h4>📋 Información General</h4>
+        <div class="detail-grid">
+          <div class="detail-item">
+            <strong>Código:</strong>
+            <span>${order.code}</span>
+          </div>
+          <div class="detail-item">
+            <strong>Cliente:</strong>
+            <span>${order.purchaser}</span>
+          </div>
+          <div class="detail-item">
+            <strong>Fecha:</strong>
+            <span>${new Date(order.purchase_datetime).toLocaleString('es-ES')}</span>
+          </div>
+          <div class="detail-item">
+            <strong>Total:</strong>
+            <span class="amount">$${order.amount.toFixed(2)}</span>
+          </div>
+          <div class="detail-item">
+            <strong>Estado:</strong>
+            <span class="status-badge ${order.status || 'pending'}">
+              ${getStatusText(order.status || 'pending')}
+            </span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="detail-section">
+        <h4>📦 Productos</h4>
+        <div class="products-list">
+          ${order.products && order.products.length > 0 ? 
+            order.products.map(item => `
+              <div class="product-item">
+                <div class="product-info">
+                  <strong>${item.product?.title || 'Producto no disponible'}</strong>
+                  <span class="product-price">$${(item.product?.price || 0).toFixed(2)} x ${item.quantity}</span>
+                </div>
+                <div class="product-total">
+                  $${((item.product?.price || 0) * item.quantity).toFixed(2)}
+                </div>
+              </div>
+            `).join('') : 
+            '<p>No hay información de productos disponible</p>'
+          }
+        </div>
+      </div>
+    </div>
+  `;
+  
+  modal.style.display = 'flex';
+}
+
+function closeOrderModal() {
+  document.getElementById('orderModal').style.display = 'none';
+}
+
+async function markAsCompleted(orderId) {
+  if (!confirm('¿Estás seguro de que quieres marcar esta orden como completada?')) {
+    return;
+  }
+  
+  try {
+    // Aquí implementarías la llamada API para actualizar el estado
+    // Por ahora, simulamos la actualización
+    showNotification('Funcionalidad de completar orden en desarrollo', 'info');
+    
+    // Recargar órdenes después de actualizar
+    // await loadOrders(currentFilters);
+  } catch (error) {
+    console.error('Error marking order as completed:', error);
+    showNotification('Error al actualizar la orden', 'error');
+  }
+}
+
+function applyFilters() {
+  const status = document.getElementById('statusFilter').value;
+  const dateFrom = document.getElementById('dateFromFilter').value;
+  const dateTo = document.getElementById('dateToFilter').value;
+  
+  currentFilters = {};
+  if (status) currentFilters.status = status;
+  if (dateFrom) currentFilters.dateFrom = dateFrom;
+  if (dateTo) currentFilters.dateTo = dateTo;
+  
+  currentPage = 1;
+  loadOrders(currentFilters);
+}
+
+function clearFilters() {
+  document.getElementById('statusFilter').value = '';
+  document.getElementById('dateFromFilter').value = '';
+  document.getElementById('dateToFilter').value = '';
+  
+  currentFilters = {};
+  currentPage = 1;
+  loadOrders();
+}
+
+function changePage(newPage) {
+  if (newPage < 1) return;
+  currentPage = newPage;
+  loadOrders(currentFilters);
+}
+
+function updatePagination(pagination) {
+  const prevBtn = document.getElementById('prevPage');
+  const nextBtn = document.getElementById('nextPage');
+  const pageInfo = document.getElementById('currentPageInfo');
+  
+  prevBtn.disabled = !pagination.hasPrevPage;
+  nextBtn.disabled = !pagination.hasNextPage;
+  
+  const totalPages = Math.ceil(pagination.total / pagination.limit);
+  pageInfo.textContent = `Página ${pagination.page} de ${totalPages}`;
+}
+
+function updateOrdersCount(total) {
+  document.getElementById('ordersCount').textContent = `${total} órdenes encontradas`;
+  document.getElementById('paginationInfo').textContent = `Mostrando ${allOrders.length} de ${total} órdenes`;
+}
+
+function showNotification(message, type = 'info') {
+  const notificationsDiv = document.getElementById('notifications');
+  if (notificationsDiv) {
+    notificationsDiv.innerHTML = `<div class="notification ${type}">${message}</div>`;
+    
+    setTimeout(() => {
+      notificationsDiv.innerHTML = '';
+    }, 5000);
+  }
+}
+
+// Cerrar modal al hacer clic fuera
+window.onclick = function(event) {
+  const modal = document.getElementById('orderModal');
+  if (event.target === modal) {
+    closeOrderModal();
+  }
+}
+</script>
+
+<style>
+.admin-orders {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.orders-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.orders-header h2 {
+  color: var(--primary);
+  margin-bottom: 10px;
+  font-size: 2rem;
+}
+
+.orders-header p {
+  color: var(--muted-foreground);
+}
+
+.filters-section {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 25px;
+  margin-bottom: 30px;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border);
+}
+
+.filters-section h3 {
+  margin-bottom: 20px;
+  color: var(--primary);
+}
+
+.filters-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  align-items: end;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filter-group label {
+  font-weight: 600;
+  color: var(--primary);
+  font-size: 0.875rem;
+}
+
+.filter-group input,
+.filter-group select {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--input);
+  color: var(--foreground);
+  font-size: 1rem;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.filter-group input:focus,
+.filter-group select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.filter-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-filter,
+.btn-clear {
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--radius);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 0.875rem;
+}
+
+.btn-filter {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.btn-filter:hover {
+  background: var(--accent);
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.btn-clear {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+.btn-clear:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.orders-table-section {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 25px;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border);
+}
+
+.table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.table-header h3 {
+  color: var(--primary);
+  margin: 0;
+}
+
+.table-stats {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+
+.table-container {
+  overflow-x: auto;
+  margin-bottom: 20px;
+}
+
+.orders-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card);
+}
+
+.orders-table th {
+  background: var(--muted);
+  color: var(--primary);
+  font-weight: 600;
+  padding: 15px 12px;
+  text-align: left;
+  border-bottom: 2px solid var(--border);
+  font-size: 0.875rem;
+}
+
+.orders-table td {
+  padding: 15px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.order-row:hover {
+  background: var(--muted);
+}
+
+.ticket-code {
+  font-family: monospace;
+  background: var(--muted);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: var(--primary);
+}
+
+.customer-name {
+  font-weight: 500;
+  color: var(--primary);
+}
+
+.order-date {
+  color: var(--foreground);
+  font-size: 0.875rem;
+}
+
+.order-time {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  margin-top: 2px;
+}
+
+.amount {
+  font-weight: 600;
+  color: var(--accent);
+  font-size: 1rem;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.status-badge.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-badge.completed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-badge.cancelled {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.order-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-view,
+.btn-complete {
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.btn-view {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+.btn-view:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.btn-complete {
+  background: #22c55e;
+  color: white;
+}
+
+.btn-complete:hover {
+  background: #16a34a;
+  transform: translateY(-1px);
+}
+
+.pagination-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.pagination-info {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.btn-page {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--primary);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+}
+
+.btn-page:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  border-color: var(--accent);
+}
+
+.btn-page:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.loading-row,
+.empty-row {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  display: inline-block;
+  margin-right: 10px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--muted-foreground);
+}
+
+.empty-icon {
+  font-size: 3rem;
+  margin-bottom: 15px;
+}
+
+.empty-state h4 {
+  margin: 0 0 10px 0;
+  color: var(--primary);
+}
+
+/* Modal */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-content {
+  background: var(--card);
+  border-radius: var(--radius);
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 25px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: var(--primary);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--muted-foreground);
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-close:hover {
+  color: var(--primary);
+}
+
+.modal-body {
+  padding: 25px;
+}
+
+.modal-footer {
+  padding: 20px 25px;
+  border-top: 1px solid var(--border);
+  text-align: right;
+}
+
+.btn-secondary {
+  padding: 10px 20px;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.btn-secondary:hover {
+  opacity: 0.9;
+}
+
+.order-details {
+  display: flex;
+  flex-direction: column;
+  gap: 25px;
+}
+
+.detail-section h4 {
+  margin: 0 0 15px 0;
+  color: var(--primary);
+  font-size: 1.1rem;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-item:last-child {
+  border-bottom: none;
+}
+
+.products-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.product-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px;
+  background: var(--muted);
+  border-radius: var(--radius);
+}
+
+.product-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.product-price {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+
+.product-total {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.notification {
+  padding: 12px 20px;
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.notification.success {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.notification.error {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.notification.info {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+
+@media (max-width: 768px) {
+  .filters-form {
+    grid-template-columns: 1fr;
+  }
+  
+  .filter-actions {
+    grid-column: 1;
+  }
+  
+  .table-header {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+  
+  .pagination-section {
+    flex-direction: column;
+    gap: 15px;
+    text-align: center;
+  }
+  
+  .order-actions {
+    flex-direction: column;
+    gap: 5px;
+  }
+  
+  .btn-view,
+  .btn-complete {
+    width: 100%;
+    text-align: center;
+  }
+}
+</style>

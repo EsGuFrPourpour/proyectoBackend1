@@ -67,7 +67,6 @@ async function seedUsers() {
     console.log("👤 Usuario actual: GET http://localhost:8080/api/sessions/current")
     console.log("👥 Listar usuarios: GET http://localhost:8080/api/users")
 
-    await database.disconnect()
     console.log("\n🎉 Seed de usuarios completado!")
   } catch (error) {
     console.error("❌ Error en seed de usuarios:", error)
@@ -81,3 +80,4 @@ if (require.main === module) {
 }
 
 module.exports = seedUsers
+

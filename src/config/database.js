@@ -1,4 +1,6 @@
 const mongoose = require("mongoose")
+const config = require("./environment")
+const logger = require("../utils/logger")
 
 class Database {
   constructor() {
@@ -8,39 +10,65 @@ class Database {
   async connect() {
     try {
       if (this.connection) {
+        logger.info("Database already connected")
         return this.connection
       }
 
-      // URL de conexión a MongoDB
-      const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/ecommerce"
+      // Configuración de conexión optimizada
+      const options = {
+        maxPoolSize: 10, // Maintain up to 10 socket connections
+        serverSelectionTimeoutMS: 5000, // Keep trying to send operations for 5 seconds
+        socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
+        bufferCommands: false, // Disable mongoose buffering
+      }
 
-      // ✅ Conexión sin opciones deprecadas
-      this.connection = await mongoose.connect(MONGODB_URI)
+      this.connection = await mongoose.connect(config.MONGODB_URI, options)
 
-      console.log("✅ Conectado a MongoDB exitosamente")
-      console.log(`📍 Base de datos: ${this.connection.connection.name}`)
+      logger.info("MongoDB connected successfully", {
+        host: this.connection.connection.host,
+        port: this.connection.connection.port,
+        name: this.connection.connection.name,
+      })
+
+      // Event listeners for connection monitoring
+      mongoose.connection.on("error", (err) => {
+        logger.error("MongoDB connection error", err)
+      })
+
+      mongoose.connection.on("disconnected", () => {
+        logger.warn("MongoDB disconnected")
+      })
+
+      mongoose.connection.on("reconnected", () => {
+        logger.info("MongoDB reconnected")
+      })
 
       return this.connection
     } catch (error) {
-      console.error("❌ Error conectando a MongoDB:", error.message)
-      console.log("\n🔍 Posibles soluciones:")
-      console.log("1. Verifica que MongoDB esté ejecutándose")
-      console.log("2. Instala MongoDB si no lo tienes")
-      console.log("3. O usa MongoDB Atlas (cloud)")
-      process.exit(1)
+      logger.error("Failed to connect to MongoDB", error)
+      throw error
     }
   }
 
   async disconnect() {
     try {
       if (this.connection) {
-        await mongoose.disconnect()
+        await mongoose.connection.close()
         this.connection = null
-        console.log("🔌 Desconectado de MongoDB")
+        logger.info("MongoDB disconnected successfully")
       }
     } catch (error) {
-      console.error("❌ Error desconectando de MongoDB:", error)
+      logger.error("Error disconnecting from MongoDB", error)
+      throw error
     }
+  }
+
+  getConnection() {
+    return this.connection
+  }
+
+  isConnected() {
+    return mongoose.connection.readyState === 1
   }
 }
 
